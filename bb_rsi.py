@@ -1,9 +1,13 @@
-from sqlite3 import DatabaseError
 import config
 import logging
 import asyncio
 import requests
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from ta import add_all_ta_features
+# import plotly.graph_objects as go
+# import plotly.express as px
 
 # ENABLE LOGGING - options, DEBUG,INFO, WARNING?
 logging.basicConfig(level=logging.INFO,
@@ -49,23 +53,51 @@ def bollinger_bands(df, n, m):
     # n = smoothing length
     # m = number of standard deviations away from MA
 
-    # typical price
-    TP = (df['h'] + df['l'] + df['c']) / 3
-    # but we will use Adj close instead for now, depends
-
-    data = TP
-    #data = df['Adj Close']
-
-    # takes one column from dataframe
+    # Using closing prices to calculate Bollinger Bands and MA
+    data = df['c']
     B_MA = pd.Series((data.rolling(n, min_periods=n).mean()), name='B_MA')
     sigma = data.rolling(n, min_periods=n).std()
 
+    # upper band
     BU = pd.Series((B_MA + m * sigma), name='BU')
+    # lower band
     BL = pd.Series((B_MA - m * sigma), name='BL')
 
+    # add to dataframe
     df = df.join(B_MA)
     df = df.join(BU)
     df = df.join(BL)
+    df = df.dropna()
+    print(df)
+    df = df.reset_index(drop=True)
+    print(df)
+    return df
+
+
+def add_signal(df):
+    # adds two columns to dataframe with buy and sell signals
+    buy_list = []
+    sell_list = []
+    print(df['h'][20])
+
+    for i in range(len(df['c'])):
+        # if df['Close'][i] > df['BU'][i]:           # sell signal     daily
+        if df['h'][i] > df['BU'][i]:             # sell signal     weekly
+            buy_list.append(np.nan)
+            sell_list.append(df['c'][i])
+        # elif df['Close'][i] < df['BL'][i]:         # buy signal      daily
+        elif df['l'][i] < df['BL'][i]:            # buy signal      weekly
+            buy_list.append(df['c'][i])
+            sell_list.append(np.nan)
+        else:
+            buy_list.append(np.nan)
+            sell_list.append(np.nan)
+
+    buy_list = pd.Series(buy_list, name='Buy')
+    sell_list = pd.Series(sell_list, name='Sell')
+
+    df = df.join(buy_list)
+    df = df.join(sell_list)
 
     return df
 
@@ -77,6 +109,9 @@ matic_bars = matic_bars.json()['bars']
 matic_bars = pd.DataFrame(matic_bars)
 
 bollinger_df = bollinger_bands(matic_bars, 20, 2)
+matic_signal = add_signal(bollinger_df)
+
 
 print(matic_bars)
 print(bollinger_df)
+print(matic_signal)

@@ -1,1 +1,8 @@
 alpaca_trade_api
+plotly
+requests
+asyncio
+pandas
+numpy
+matplotlib
+ta

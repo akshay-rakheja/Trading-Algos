@@ -1,8 +1,8 @@
-alpaca_trade_api
+alpaca-py
 plotly
 requests
 asyncio
 pandas
 numpy
 matplotlib
-ta
+TA-lib

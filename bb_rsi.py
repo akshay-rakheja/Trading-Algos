@@ -11,6 +11,9 @@ from ta.utils import dropna
 from alpaca.data.historical import HistoricalDataClient
 from alpaca.common.time import TimeFrame
 import json
+import plotly.graph_objects as go
+import plotly.express as px
+
 # import talib as ta
 # import plotly.graph_objects as go
 # import plotly.express as px
@@ -98,9 +101,65 @@ def get_rsi(df):
 bars = get_rsi(bars)
 
 bars = get_bb(bars)
+print(bars.shape)
 bars = bars.dropna()
-print(bars.loc[bars['rsi'] > 70])
-print(bars.loc[bars['bb_hi'] > 0])
+print(bars.shape)
+print(bars.loc[bars['rsi'] > 70].shape)
+print(bars.loc[bars['bb_hi'] > 0].shape)
+
+bars = bars.reset_index(drop=True)
+print(bars[-1:])
+
+
+def add_condition(df):
+    for i in range(len(df)):
+        # Check if last bar is above 70% RSI and above Bollinger Band high then sell
+        if df.loc[i, 'rsi'] > 70 and df.loc[i, 'bb_hi'] > 0:
+            df.loc[i, 'opinion'] = 'Sell'
+        # Check if last bar is below 30% RSI and below Bollinger Band low then buy
+        elif((df.loc[i, 'rsi'] < 30) & (df.loc[i, 'bb_li'] > 0)):
+            df.loc[i, 'opinion'] = 'Buy'
+        else:
+            df.loc[i, 'opinion'] = 'Hold'
+
+    return bars
+
+
+bars = add_condition(bars)
+print(add_condition(bars))
+
+# calculating when Buy appears after a Hold
+buy_signal = bars[(bars['opinion'] == 'Buy') &
+                  (bars['opinion'].shift() == 'Hold')]
+
+# calculating when Sell appears after a Hold
+sell_signal = bars[(bars['opinion'] == 'Sell') &
+                   (bars['opinion'].shift() == 'Hold')]
+
+
+# Plot green upward facing triangles at crossovers
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_low']))
+# fig = px.scatter(buy_signal, x=bars['timestamp'], y=bars['bb_low'],
+#                  color_discrete_sequence=['green'], symbol_sequence=[49])
+
+# Plot red downward facing triangles at crossunders
+fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_high']))
+# fig.scatter(sell_signal, x=bars['timestamp'], y=bars['bb_high'], color_discrete_sequence=[
+#     'red'], symbol_sequence=[50])
+
+# Plot slow sma, fast sma and price
+fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['close']))
+fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_mavg']))
+fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_high']))
+fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_low']))
+fig.show()
+# fig3 = bars.plot(y=['close', 'bb_high', 'bb_low'])
+
+# fig4 = go.Figure(data=fig1 + fig2 + fig3)
+# fig4.update_traces(marker={'size': 13})
+# fig4.show()
+
 
 # print(bars.loc[bars['bb_hi'] > 0])
 

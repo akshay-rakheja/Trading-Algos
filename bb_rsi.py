@@ -142,38 +142,41 @@ bars = bars.reset_index(drop=True)
 print(bars[-1:])
 
 
-def add_condition(df):
-    for i in range(len(df)):
-        # Check if last bar is above 70% RSI and above Bollinger Band high then sell
-        if df.loc[i, 'rsi'] > 70 and df.loc[i, 'bb_hi'] > 0:
-            df.loc[i, 'opinion'] = 'Sell'
-        # Check if last bar is below 30% RSI and below Bollinger Band low then buy
-        elif((df.loc[i, 'rsi'] < 30) & (df.loc[i, 'bb_li'] > 0)):
-            df.loc[i, 'opinion'] = 'Buy'
-        else:
-            df.loc[i, 'opinion'] = 'Hold'
+# def add_condition(df):
+#     for i in range(len(df)):
+#         # Check if last bar is above 70% RSI and above Bollinger Band high then sell
+#         if df.loc[i, 'rsi'] > 70 and df.loc[i, 'bb_hi'] > 0:
+#             df.loc[i, 'opinion'] = 'Sell'
+#         # Check if last bar is below 30% RSI and below Bollinger Band low then buy
+#         elif((df.loc[i, 'rsi'] < 30) & (df.loc[i, 'bb_li'] > 0)):
+#             df.loc[i, 'opinion'] = 'Buy'
+#         else:
+#             df.loc[i, 'opinion'] = 'Hold'
 
-    return bars
-
-
-bars = add_condition(bars)
-print(add_condition(bars))
+#     return bars
 
 
-def buy_points(df):
-    return bars.loc[(bars['rsi'] > 70) & (bars['bb_hi'] > 0) & (bars['rsi'].shift() < 70) & (bars['bb_hi'].shift() == 0)]
+# bars['buy_signal'] = np.where(bars.bb_hi > 0 & bars.rsi > 70, True, False)
+# bars['sell_signal'] = np.where(bars.bb_li > 0 & bars.rsi < 30, True, False)
+
+# bars = add_condition(bars)
+# print(add_condition(bars))
 
 
 def sell_points(df):
+    return bars.loc[(bars['rsi'] > 70) & (bars['bb_hi'] > 0) & (bars['rsi'].shift() < 70) & (bars['bb_hi'].shift() == 0)]
+
+
+def buy_points(df):
     return bars.loc[(bars['rsi'] < 30) & (bars['bb_li'] > 0) & (bars['rsi'].shift() > 30) & (bars['bb_li'].shift() == 0)]
 
 
-print("RSI IS >70 here:\n", bars.loc[bars['rsi'] > 70])
-print("BB bands are overbought here:\n", bars.loc[bars['bb_hi'] > 0])
+# print("RSI IS >70 here:\n", bars.loc[bars['rsi'] > 70])
+# print("BB bands are overbought here:\n", bars.loc[bars['bb_hi'] > 0])
 buying_points = buy_points(bars)
 selling_points = sell_points(bars)
-print(buying_points)
-print(selling_points)
+print("Buying Points are: \n", buying_points)
+print("Selling Points are: \n", selling_points)
 
 
 def get_positions():
@@ -245,36 +248,24 @@ def post_Alpaca_order(symbol, qty, side, type, time_in_force):
 
 
 def plot_signals():
-    # calculating when Buy appears after a Hold
-    buy_signal = bars[(bars['opinion'] == 'Buy') &
-                      (bars['opinion'].shift() == 'Hold')]
-
-    # calculating when Sell appears after a Hold
-    sell_signal = bars[(bars['opinion'] == 'Sell') &
-                       (bars['opinion'].shift() == 'Hold')]
-    # Plot green upward facing triangles at crossovers
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_low']))
-    fig.add_trace(px.scatter(buy_signal, x=bars['timestamp'], y=bars['bb_low'],
-                             color_discrete_sequence=['green'], symbol_sequence=[49]))
-    # fig = px.scatter(buy_signal, x=bars['timestamp'], y=bars['bb_low'],
-    #                  color_discrete_sequence=['green'], symbol_sequence=[49])
-
-    # Plot red downward facing triangles at crossunders
-    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_high']))
-    fig.add_trace(px.scatter(sell_signal, x=bars['timestamp'], y=bars['bb_high'], color_discrete_sequence=[
-        'red'], symbol_sequence=[50]))
-    # fig = px.scatter(sell_signal, x=bars['timestamp'], y=bars['bb_high'], color_discrete_sequence=[
-    #     'red'], symbol_sequence=[50])
-    # Plot slow sma, fast sma and price
-    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['close']))
-    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_mavg']))
-    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_high']))
-    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_low']))
+    fig.add_trace(go.Scatter(x=bars['timestamp'],
+                  y=bars['close'], name='Closing Price'))
+    fig.add_trace(go.Scatter(x=bars['timestamp'],
+                  y=bars['bb_mavg'], name='Moving Average'))
+    fig.add_trace(go.Scatter(x=bars['timestamp'],
+                  y=bars['bb_high'], name='BB_High'))
+    fig.add_trace(go.Scatter(x=bars['timestamp'],
+                  y=bars['bb_low'], name='BB_Low'))
+    # print(buying_points.timestamp)
+    fig.add_trace(go.Scatter(
+        x=buying_points['timestamp'], y=buying_points['close'], name='Buy', mode='markers', marker_color='green', marker_symbol=[49], marker_size=10))
+    fig.add_trace(go.Scatter(x=selling_points['timestamp'], y=selling_points['close'],
+                  name='Sell', mode='markers', marker_color='red', marker_symbol=[50], marker_size=10))
     fig.show()
 
 
-# plot_signals()
+plot_signals()
 # loop = asyncio.get_event_loop()
 # loop.run_until_complete(main())
 # loop.close()

@@ -4,6 +4,7 @@ import asyncio
 import requests
 import pandas as pd
 import numpy as np
+from datetime import date
 import matplotlib.pyplot as plt
 from ta.volatility import BollingerBands
 from ta.momentum import RSIIndicator
@@ -36,16 +37,50 @@ HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
 client = HistoricalDataClient(
     config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
 
+# Trading variables
 
-def get_crypto_bar_data(trading_pair, start_date, exchange):
+trading_pair = 'BTCUSD'
+exchange = 'FTXU'
+start_date = '2020-01-01'
+today = date.today()
+today = today.strftime("%Y-%m-%d")
+# today = pd.Timestamp.today()
+print(today)
+
+
+async def main():
+    '''
+    Get historical data from Alpaca and calculate RSI and Bollinger Bands.
+    Backtest historical data to determine buy/sell/hold decisions and test performance.
+    After backtesting, plot the results. Then, enter the loop to wait for new data and
+    calculate entry and exit decisions.
+    '''
+    # Log the current balance of the MATIC token in our Alpaca account
+    logger.info('BTC Position on Alpaca: {0}'.format(get_positions()))
+    # Log the current Cash Balance (USD) in our Alpaca account
+    logger.info("USD position on Alpaca: {0}".format(
+        get_account_details()['cash']))
+    get_crypto_bar_data(trading_pair, start_date, exchange)
+
+    while True:
+        l1 = loop.create_task(get_crypto_bar_data(
+            trading_pair, start_date, exchange))
+        # Wait for the tasks to finish
+        await asyncio.wait([l1])
+        await check_arbitrage()
+        # Wait for the a certain amount of time between each quote request
+        await asyncio.sleep(waitTime)
+
+
+def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
     '''
     Get bar data from Alpaca for a given trading pair and exchange
     '''
-    # Try to get a quote from 1Inch
+    print("ENd date is: ", end_date)
     try:
 
         bars = client.get_crypto_bars(
-            trading_pair, TimeFrame.Hour, start=start_date, limit=10000, exchanges=exchange)
+            trading_pair, TimeFrame.Hour, start=start_date, end=end_date, limit=10000, exchanges=exchange)
 
         bars = bars.json()
 
@@ -54,7 +89,8 @@ def get_crypto_bar_data(trading_pair, start_date, exchange):
         bars = bars['bar_set'][trading_pair]
 
         bars = pd.DataFrame(bars)
-        bars = bars.drop(columns=["symbol", "timeframe", "exchange"], axis=1)
+        bars = bars.drop(
+            columns=["open", "high", "low", "trade_count", "symbol", "timeframe", "exchange"], axis=1)
         # print(bars)
     # If there is an error, log it
     except Exception as e:
@@ -65,11 +101,10 @@ def get_crypto_bar_data(trading_pair, start_date, exchange):
     return bars
 
 
-bars = get_crypto_bar_data('BTCUSD', '2022-01-01', 'FTXU')
+bars = get_crypto_bar_data('BTCUSD', '2022-01-01', today, 'FTXU')
 
 
 def get_bb(df):
-
     # calculate bollinger bands
     indicator_bb = BollingerBands(
         close=df["close"], window=20, window_dev=2)
@@ -79,13 +114,10 @@ def get_bb(df):
 
     # Add Bollinger Band high indicator
     df['bb_hi'] = indicator_bb.bollinger_hband_indicator()
-
     # Add Bollinger Band low indicator
     df['bb_li'] = indicator_bb.bollinger_lband_indicator()
-
     # Add Width Size Bollinger Bands
     df['bb_w'] = indicator_bb.bollinger_wband()
-
     # Add Percentage Bollinger Bands
     df['bb_p'] = indicator_bb.bollinger_pband()
     # print(df)
@@ -106,7 +138,6 @@ bars = bars.dropna()
 print(bars.shape)
 print(bars.loc[bars['rsi'] > 70].shape)
 print(bars.loc[bars['bb_hi'] > 0].shape)
-
 bars = bars.reset_index(drop=True)
 print(bars[-1:])
 
@@ -128,144 +159,122 @@ def add_condition(df):
 bars = add_condition(bars)
 print(add_condition(bars))
 
-# calculating when Buy appears after a Hold
-buy_signal = bars[(bars['opinion'] == 'Buy') &
-                  (bars['opinion'].shift() == 'Hold')]
 
-# calculating when Sell appears after a Hold
-sell_signal = bars[(bars['opinion'] == 'Sell') &
-                   (bars['opinion'].shift() == 'Hold')]
+def buy_points(df):
+    return bars.loc[(bars['rsi'] > 70) & (bars['bb_hi'] > 0) & (bars['rsi'].shift() < 70) & (bars['bb_hi'].shift() == 0)]
 
 
-# Plot green upward facing triangles at crossovers
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_low']))
-# fig = px.scatter(buy_signal, x=bars['timestamp'], y=bars['bb_low'],
-#                  color_discrete_sequence=['green'], symbol_sequence=[49])
-
-# Plot red downward facing triangles at crossunders
-fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_high']))
-# fig.scatter(sell_signal, x=bars['timestamp'], y=bars['bb_high'], color_discrete_sequence=[
-#     'red'], symbol_sequence=[50])
-
-# Plot slow sma, fast sma and price
-fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['close']))
-fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_mavg']))
-fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_high']))
-fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_low']))
-fig.show()
-# fig3 = bars.plot(y=['close', 'bb_high', 'bb_low'])
-
-# fig4 = go.Figure(data=fig1 + fig2 + fig3)
-# fig4.update_traces(marker={'size': 13})
-# fig4.show()
+def sell_points(df):
+    return bars.loc[(bars['rsi'] < 30) & (bars['bb_li'] > 0) & (bars['rsi'].shift() > 30) & (bars['bb_li'].shift() == 0)]
 
 
-# print(bars.loc[bars['bb_hi'] > 0])
+print("RSI IS >70 here:\n", bars.loc[bars['rsi'] > 70])
+print("BB bands are overbought here:\n", bars.loc[bars['bb_hi'] > 0])
+buying_points = buy_points(bars)
+selling_points = sell_points(bars)
+print(buying_points)
+print(selling_points)
 
 
-# def bollinger_bands(df, n, m):
-#     # takes dataframe on input
-#     # n = smoothing length
-#     # m = number of standard deviations away from MA
-
-#     # Using closing prices to calculate Bollinger Bands and MA
-#     data = df['c']
-#     B_MA = pd.Series((data.rolling(n, min_periods=n).mean()), name='B_MA')
-#     sigma = data.rolling(n, min_periods=n).std()
-
-#     # upper band
-#     BU = pd.Series((B_MA + m * sigma), name='BU')
-#     # lower band
-#     BL = pd.Series((B_MA - m * sigma), name='BL')
-
-#     # add to dataframe
-#     df = df.join(B_MA)
-#     df = df.join(BU)
-#     df = df.join(BL)
-#     df = df.dropna()
-#     # print(df)
-#     df = df.reset_index(drop=True)
-#     # print(df)
-#     return df
+def get_positions():
+    '''
+    Get positions on Alpaca
+    '''
+    try:
+        positions = requests.get(
+            '{0}/v2/positions'.format(ALPACA_BASE_URL), headers=HEADERS)
+        # logger.info('Alpaca positions reply status code: {0}'.format(
+        # positions.status_code))
+        if positions.status_code != 200:
+            logger.info(
+                "Undesirable response from Alpaca! {}".format(positions.json()))
+            return False
+        # positions = positions[0]
+        matic_position = positions.json()[0]['qty']
+        # logger.info('Matic Position on Alpaca: {0}'.format(matic_position))
+    except Exception as e:
+        logger.exception(
+            "There was an issue getting positions from Alpaca: {0}".format(e))
+        return False
+    return matic_position
 
 
-# def add_signal(df):
-#     # adds two columns to dataframe with buy and sell signals
-#     buy_list = []
-#     sell_list = []
-#     # print(df['high'][20])
-
-#     for i in range(len(df['close'])):
-#         # if df['Close'][i] > df['BU'][i]:           # sell signal     daily
-#         if df['high'][i] > df['BU'][i]:             # sell signal     weekly
-#             buy_list.append(np.nan)
-#             sell_list.append(df['close'][i])
-#         # elif df['Close'][i] < df['BL'][i]:         # buy signal      daily
-#         elif df['low'][i] < df['BL'][i]:            # buy signal      weekly
-#             buy_list.append(df['close'][i])
-#             sell_list.append(np.nan)
-#         else:
-#             buy_list.append(np.nan)
-#             sell_list.append(np.nan)
-
-#     buy_list = pd.Series(buy_list, name='Buy')
-#     sell_list = pd.Series(sell_list, name='Sell')
-
-#     df = df.join(buy_list)
-#     df = df.join(sell_list)
-
-#     return df
+def get_account_details():
+    '''
+    Get Alpaca Trading Account Details
+    '''
+    try:
+        account = requests.get(
+            '{0}/v2/account'.format(ALPACA_BASE_URL), headers=HEADERS)
+        if account.status_code != 200:
+            logger.info(
+                "Undesirable response from Alpaca! {}".format(account.json()))
+            return False
+    except Exception as e:
+        logger.exception(
+            "There was an issue getting account details from Alpaca: {0}".format(e))
+        return False
+    return account.json()
 
 
-# bars = add_signal(bars)
+# Post an Order to Alpaca
+def post_Alpaca_order(symbol, qty, side, type, time_in_force):
+    '''
+    Post an order to Alpaca
+    '''
+    try:
+        order = requests.post(
+            '{0}/v2/orders'.format(BASE_ALPACA_URL), headers=HEADERS, json={
+                'symbol': symbol,
+                'qty': qty,
+                'side': side,
+                'type': type,
+                'time_in_force': time_in_force,
+            })
+        logger.info('Alpaca order reply status code: {0}'.format(
+            order.status_code))
+        if order.status_code != 200:
+            logger.info(
+                "Undesirable response from Alpaca! {}".format(order.json()))
+            return False
+    except Exception as e:
+        logger.exception(
+            "There was an issue posting order to Alpaca: {0}".format(e))
+        return False
+    return order.json()
 
-# print(bars)
-# response = requests.get(
-#     '{0}/v1beta1/crypto/{1}/bars?timeframe={2}&start={3}'.format(ALPACA_DATA_URL, 'MATICUSD', '1Hour', '2022-01-01'), headers=HEADERS)
 
-# matic_bars = response.json()['bars']
-# # print("Heres my response:     ", matic_bars)
-# nxt_token = response.json()['next_page_token']
-# matic_bars = pd.DataFrame(matic_bars)
+def plot_signals():
+    # calculating when Buy appears after a Hold
+    buy_signal = bars[(bars['opinion'] == 'Buy') &
+                      (bars['opinion'].shift() == 'Hold')]
+
+    # calculating when Sell appears after a Hold
+    sell_signal = bars[(bars['opinion'] == 'Sell') &
+                       (bars['opinion'].shift() == 'Hold')]
+    # Plot green upward facing triangles at crossovers
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_low']))
+    fig.add_trace(px.scatter(buy_signal, x=bars['timestamp'], y=bars['bb_low'],
+                             color_discrete_sequence=['green'], symbol_sequence=[49]))
+    # fig = px.scatter(buy_signal, x=bars['timestamp'], y=bars['bb_low'],
+    #                  color_discrete_sequence=['green'], symbol_sequence=[49])
+
+    # Plot red downward facing triangles at crossunders
+    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_high']))
+    fig.add_trace(px.scatter(sell_signal, x=bars['timestamp'], y=bars['bb_high'], color_discrete_sequence=[
+        'red'], symbol_sequence=[50]))
+    # fig = px.scatter(sell_signal, x=bars['timestamp'], y=bars['bb_high'], color_discrete_sequence=[
+    #     'red'], symbol_sequence=[50])
+    # Plot slow sma, fast sma and price
+    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['close']))
+    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_mavg']))
+    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_high']))
+    fig.add_trace(go.Scatter(x=bars['timestamp'], y=bars['bb_low']))
+    fig.show()
 
 
-# while (nxt_token):
-#     print("Starting next page with token :", nxt_token)
-#     nxtpg = requests.get('{0}/v1beta1/crypto/{1}/bars?timeframe={2}&start={3}?page_token={4}'.format(
-#         ALPACA_DATA_URL, 'MATICUSD', '1Hour', '2022-01-01', nxt_token), headers=HEADERS)
-#     print(nxtpg.json())
-#     # nxtpg = nxtpg.json()['bars']
-#     matic_bars = matic_bars.append(pd.DataFrame(nxtpg))
-#     nxt_token = nxtpg.json()['next_page_token']
-#     # matic_bars = matic_bars.append(pd.DataFrame(nxtpg_token.json()['bars']))
-
-# print(matic_bars)
-
-
-# Initialize Bollinger Bands Indicator
-# indicator_bb = BollingerBands(close=matic_bars["c"], window=20, window_dev=2)
-
-# # Add Bollinger Bands features
-# matic_bars['bb_mavg'] = indicator_bb.bollinger_mavg()
-# matic_bars['bb_high'] = indicator_bb.bollinger_hband()
-# matic_bars['bb_low'] = indicator_bb.bollinger_lband()
-
-# # Add Bollinger Band high indicator
-# matic_bars['bb_hi'] = indicator_bb.bollinger_hband_indicator()
-
-# # Add Bollinger Band low indicator
-# matic_bars['bb_li'] = indicator_bb.bollinger_lband_indicator()
-
-# # Add Width Size Bollinger Bands
-# matic_bars['bb_w'] = indicator_bb.bollinger_wband()
-
-# # Add Percentage Bollinger Bands
-# matic_bars['bb_p'] = indicator_bb.bollinger_pband()
-# print(matic_bars)
-# matic_signal = add_signal(bollinger_df)
-# bollinger_bands = ta.bo
-
-# print(matic_bars)
-# print(bollinger_df)
-# print(matic_signal)
+# plot_signals()
+# loop = asyncio.get_event_loop()
+# loop.run_until_complete(main())
+# loop.close()

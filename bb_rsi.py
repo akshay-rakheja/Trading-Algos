@@ -38,14 +38,13 @@ client = HistoricalDataClient(
     config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
 
 # Trading variables
-
 trading_pair = 'BTCUSD'
 exchange = 'FTXU'
 start_date = '2020-01-01'
 today = date.today()
 today = today.strftime("%Y-%m-%d")
-# today = pd.Timestamp.today()
-print(today)
+rsi_upper_bound = 60
+rsi_lower_bound = 40
 
 
 async def main():
@@ -104,6 +103,39 @@ def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
 bars = get_crypto_bar_data('BTCUSD', '2022-01-01', today, 'FTXU')
 
 
+def get_daily_returns(df):
+    df['daily_returns'] = df['close'].pct_change()
+    return df
+
+
+bars = get_daily_returns(bars)
+
+
+def get_cumulative_return(df):
+    df['cumulative_return'] = bars['daily_returns'].add(1).cumprod().sub(1)
+    return df
+
+
+bars = get_cumulative_return(bars)
+
+
+def get_buy_hold_returns(df):
+    df['buy_hold_returns'] = (df['cumulative_return'] + 1) * 10000
+    return df
+
+
+bars = get_buy_hold_returns(bars)
+
+
+# forward fill any missing data points in our buy & hold strategies
+# and forward fill BTC_daily_return for missing data points
+bars[['buy_hold_returns', 'daily_returns', ]] = bars[[
+    'buy_hold_returns', 'daily_returns']].ffill()
+
+
+print(bars)
+
+
 def get_bb(df):
     # calculate bollinger bands
     indicator_bb = BollingerBands(
@@ -136,39 +168,18 @@ bars = get_bb(bars)
 print(bars.shape)
 bars = bars.dropna()
 print(bars.shape)
-print(bars.loc[bars['rsi'] > 70].shape)
+print(bars.loc[bars['rsi'] > rsi_upper_bound].shape)
 print(bars.loc[bars['bb_hi'] > 0].shape)
 bars = bars.reset_index(drop=True)
 print(bars[-1:])
 
 
-# def add_condition(df):
-#     for i in range(len(df)):
-#         # Check if last bar is above 70% RSI and above Bollinger Band high then sell
-#         if df.loc[i, 'rsi'] > 70 and df.loc[i, 'bb_hi'] > 0:
-#             df.loc[i, 'opinion'] = 'Sell'
-#         # Check if last bar is below 30% RSI and below Bollinger Band low then buy
-#         elif((df.loc[i, 'rsi'] < 30) & (df.loc[i, 'bb_li'] > 0)):
-#             df.loc[i, 'opinion'] = 'Buy'
-#         else:
-#             df.loc[i, 'opinion'] = 'Hold'
-
-#     return bars
-
-
-# bars['buy_signal'] = np.where(bars.bb_hi > 0 & bars.rsi > 70, True, False)
-# bars['sell_signal'] = np.where(bars.bb_li > 0 & bars.rsi < 30, True, False)
-
-# bars = add_condition(bars)
-# print(add_condition(bars))
-
-
 def sell_points(df):
-    return bars.loc[(bars['rsi'] > 70) & (bars['bb_hi'] > 0) & (bars['rsi'].shift() < 70) & (bars['bb_hi'].shift() == 0)]
+    return bars.loc[(bars['rsi'] > rsi_upper_bound) & (bars['bb_hi'] > 0) & (bars['rsi'].shift() < rsi_upper_bound) & (bars['bb_hi'].shift() == 0)]
 
 
 def buy_points(df):
-    return bars.loc[(bars['rsi'] < 30) & (bars['bb_li'] > 0) & (bars['rsi'].shift() > 30) & (bars['bb_li'].shift() == 0)]
+    return bars.loc[(bars['rsi'] < rsi_lower_bound) & (bars['bb_li'] > 0) & (bars['rsi'].shift() > rsi_lower_bound) & (bars['bb_li'].shift() == 0)]
 
 
 # print("RSI IS >70 here:\n", bars.loc[bars['rsi'] > 70])
@@ -177,6 +188,53 @@ buying_points = buy_points(bars)
 selling_points = sell_points(bars)
 print("Buying Points are: \n", buying_points)
 print("Selling Points are: \n", selling_points)
+
+
+buying_points['order'] = 'buy'
+selling_points['order'] = 'sell'
+
+# Combine buys and sells into 1 data frame
+orders = pd.concat([buying_points[['order']],
+                   selling_points[['order']]]).sort_index()
+
+# new dataframe with market data and orders merged
+portfolio = pd.merge(bars, orders, how='outer',
+                     left_index=True, right_index=True)
+
+
+def backtest_returns(df):
+
+    # Backtest of SMA crossover strategy
+    active_position = False
+    equity = 10000
+
+    # Iterate row by row of our historical data
+    for index, row in df.iterrows():
+
+        # change state of position
+        if row['order'] == 'buy':
+            active_position = True
+        elif row['order'] == 'sell':
+            active_position = False
+
+        # update strategy equity
+        if active_position:
+            df.loc[index, 'trading_returns'] = (
+                row['daily_returns'] + 1) * equity
+            equity = df.loc[index, 'trading_returns']
+        else:
+            df.loc[index, 'trading_returns'] = equity
+
+    fig = px.line(portfolio[['trading_returns', 'buy_hold_returns']],
+                  color_discrete_sequence=['green', 'blue'])
+    fig.show()
+
+    return df
+
+
+portfolio = backtest_returns(portfolio)
+
+print("Portfolio after backtesting: \n", portfolio)
 
 
 def get_positions():
@@ -250,13 +308,13 @@ def post_Alpaca_order(symbol, qty, side, type, time_in_force):
 def plot_signals():
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=bars['timestamp'],
-                  y=bars['close'], name='Closing Price'))
+                  y=bars['close'], name='Closing Price', fill=None, mode='lines', line_color='black'))
     fig.add_trace(go.Scatter(x=bars['timestamp'],
-                  y=bars['bb_mavg'], name='Moving Average'))
+                  y=bars['bb_mavg'], name='Moving Average', fill=None, mode='lines', line_color='blue'))
     fig.add_trace(go.Scatter(x=bars['timestamp'],
-                  y=bars['bb_high'], name='BB_High'))
+                  y=bars['bb_high'], name='BB_High', fill='tonexty'))
     fig.add_trace(go.Scatter(x=bars['timestamp'],
-                  y=bars['bb_low'], name='BB_Low'))
+                  y=bars['bb_low'], name='BB_Low', fill='tonexty'))
     # print(buying_points.timestamp)
     fig.add_trace(go.Scatter(
         x=buying_points['timestamp'], y=buying_points['close'], name='Buy', mode='markers', marker_color='green', marker_symbol=[49], marker_size=10))

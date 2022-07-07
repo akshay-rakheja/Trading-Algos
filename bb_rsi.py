@@ -33,7 +33,7 @@ HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
            'APCA-API-SECRET-KEY': config.APCA_API_SECRET_KEY}
 
 
-# Alpaca Rest client
+# Alpaca client
 client = HistoricalDataClient(
     config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
 
@@ -51,6 +51,8 @@ latest_bar_data = 0
 
 # Wait time between each bar request -> 1 hour
 waitTime = 3600
+active_position = False
+btc_position = 0
 
 
 async def main():
@@ -74,6 +76,7 @@ async def main():
             trading_pair, start_date, today, exchange))
         # Wait for the tasks to finish
         await asyncio.wait([l1])
+        print(latest_bar_data)
         await check_condition()
         # Wait for the a certain amount of time between each quote request
         await asyncio.sleep(waitTime)
@@ -120,14 +123,17 @@ async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
 
 
 async def check_condition():
+    logger.info("Checking BTC position on Alpaca")
+    global btc_position
+    btc_position = get_positions()
     logger.info("Checking Buy/Sell conditions for Bollinger bands and RSI")
     if latest_bar_data.empty:
         logger.info("Unable to get latest bar data")
     # If bollinger high indicator is 1 and RSI is above the upperbound, then buy
-    if latest_bar_data['bb_hi'] == 1 and latest_bar_data['rsi'] > rsi_upper_bound:
+    if latest_bar_data['bb_hi'] == 1 and latest_bar_data['rsi'] > rsi_upper_bound and btc_position > 0:
         logger.info(
             "Sell signal: Bollinger bands and RSI are above upper bound")
-    elif latest_bar_data['bb_li'] == 1 and latest_bar_data['rsi'] < rsi_lower_bound:
+    elif latest_bar_data['bb_li'] == 1 and latest_bar_data['rsi'] < rsi_lower_bound and btc_position == 0:
         logger.info("Buy signal: Bollinger bands and RSI are below lower bound")
     else:
         logger.info("Hold signal: Bollinger bands and RSI are within bounds")
@@ -141,7 +147,7 @@ def get_daily_returns(df):
     return df
 
 
-bars = get_daily_returns(bars)
+# bars = get_daily_returns(bars)
 
 
 def get_cumulative_return(df):
@@ -149,7 +155,7 @@ def get_cumulative_return(df):
     return df
 
 
-bars = get_cumulative_return(bars)
+# bars = get_cumulative_return(bars)
 
 
 def get_buy_hold_returns(df):
@@ -157,16 +163,16 @@ def get_buy_hold_returns(df):
     return df
 
 
-bars = get_buy_hold_returns(bars)
+# bars = get_buy_hold_returns(bars)
 
 
 # forward fill any missing data points in our buy & hold strategies
 # and forward fill BTC_daily_return for missing data points
-bars[['buy_hold_returns', 'daily_returns', ]] = bars[[
-    'buy_hold_returns', 'daily_returns']].ffill()
+# bars[['buy_hold_returns', 'daily_returns', ]] = bars[[
+#     'buy_hold_returns', 'daily_returns']].ffill()
 
 
-print(bars)
+# print(bars)
 
 
 def get_bb(df):
@@ -195,16 +201,16 @@ def get_rsi(df):
     return df
 
 
-bars = get_rsi(bars)
+# bars = get_rsi(bars)
 
-bars = get_bb(bars)
-print(bars.shape)
-bars = bars.dropna()
-print(bars.shape)
-print(bars.loc[bars['rsi'] > rsi_upper_bound].shape)
-print(bars.loc[bars['bb_hi'] > 0].shape)
-bars = bars.reset_index(drop=True)
-print(bars[-1:])
+# bars = get_bb(bars)
+# print(bars.shape)
+# bars = bars.dropna()
+# print(bars.shape)
+# print(bars.loc[bars['rsi'] > rsi_upper_bound].shape)
+# print(bars.loc[bars['bb_hi'] > 0].shape)
+# bars = bars.reset_index(drop=True)
+# print(bars[-1:])
 
 
 def sell_points(df):
@@ -217,22 +223,22 @@ def buy_points(df):
 
 # print("RSI IS >70 here:\n", bars.loc[bars['rsi'] > 70])
 # print("BB bands are overbought here:\n", bars.loc[bars['bb_hi'] > 0])
-buying_points = buy_points(bars)
-selling_points = sell_points(bars)
-print("Buying Points are: \n", buying_points)
-print("Selling Points are: \n", selling_points)
+# buying_points = buy_points(bars)
+# selling_points = sell_points(bars)
+# print("Buying Points are: \n", buying_points)
+# print("Selling Points are: \n", selling_points)
 
 
-buying_points['order'] = 'buy'
-selling_points['order'] = 'sell'
+# buying_points['order'] = 'buy'
+# selling_points['order'] = 'sell'
 
 # Combine buys and sells into 1 data frame
-orders = pd.concat([buying_points[['order']],
-                   selling_points[['order']]]).sort_index()
+# orders = pd.concat([buying_points[['order']],
+#                    selling_points[['order']]]).sort_index()
 
 # new dataframe with market data and orders merged
-portfolio = pd.merge(bars, orders, how='outer',
-                     left_index=True, right_index=True)
+# portfolio = pd.merge(bars, orders, how='outer',
+#                      left_index=True, right_index=True)
 
 
 def backtest_returns(df):
@@ -271,7 +277,7 @@ def backtest_returns(df):
 
 # portfolio = backtest_returns(portfolio)
 
-print("Portfolio after backtesting: \n", portfolio)
+# print("Portfolio after backtesting: \n", portfolio)
 
 
 def get_positions():
@@ -281,20 +287,18 @@ def get_positions():
     try:
         positions = requests.get(
             '{0}/v2/positions'.format(ALPACA_BASE_URL), headers=HEADERS)
-        # logger.info('Alpaca positions reply status code: {0}'.format(
-        # positions.status_code))
+        logger.info('Alpaca positions reply status code: {0}'.format(
+            positions.status_code))
         if positions.status_code != 200:
             logger.info(
                 "Undesirable response from Alpaca! {}".format(positions.json()))
-            return False
-        # positions = positions[0]
-        matic_position = positions.json()[0]['qty']
-        # logger.info('Matic Position on Alpaca: {0}'.format(matic_position))
+        btc_position = positions.json()[0]['qty']
+        logger.info('BTC Position on Alpaca: {0}'.format(btc_position))
     except Exception as e:
         logger.exception(
             "There was an issue getting positions from Alpaca: {0}".format(e))
-        return False
-    return matic_position
+
+    return btc_position
 
 
 def get_account_details():
@@ -322,7 +326,7 @@ def post_Alpaca_order(symbol, qty, side, type, time_in_force):
     '''
     try:
         order = requests.post(
-            '{0}/v2/orders'.format(BASE_ALPACA_URL), headers=HEADERS, json={
+            '{0}/v2/orders'.format(ALPACA_BASE_URL), headers=HEADERS, json={
                 'symbol': symbol,
                 'qty': qty,
                 'side': side,

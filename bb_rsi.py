@@ -46,6 +46,12 @@ today = today.strftime("%Y-%m-%d")
 rsi_upper_bound = 60
 rsi_lower_bound = 40
 
+bar_data = 0
+latest_bar_data = 0
+
+# Wait time between each bar request -> 1 hour
+waitTime = 3600
+
 
 async def main():
     '''
@@ -59,19 +65,21 @@ async def main():
     # Log the current Cash Balance (USD) in our Alpaca account
     logger.info("USD position on Alpaca: {0}".format(
         get_account_details()['cash']))
-    get_crypto_bar_data(trading_pair, start_date, exchange)
+    get_crypto_bar_data(trading_pair, start_date, today, exchange)
 
+    # Plot Bollinger bands from start date to today
+    plot_signals()
     while True:
         l1 = loop.create_task(get_crypto_bar_data(
-            trading_pair, start_date, exchange))
+            trading_pair, start_date, today, exchange))
         # Wait for the tasks to finish
         await asyncio.wait([l1])
-        await check_arbitrage()
+        await check_condition()
         # Wait for the a certain amount of time between each quote request
         await asyncio.sleep(waitTime)
 
 
-def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
+async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
     '''
     Get bar data from Alpaca for a given trading pair and exchange
     '''
@@ -90,7 +98,18 @@ def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
         bars = pd.DataFrame(bars)
         bars = bars.drop(
             columns=["open", "high", "low", "trade_count", "symbol", "timeframe", "exchange"], axis=1)
-        # print(bars)
+
+        bars = get_rsi(bars)
+
+        bars = get_bb(bars)
+        bars = bars.dropna()
+        bars = bars.reset_index(drop=True)
+
+        # Assigning bar data to global variables
+        global latest_bar_data
+        global bar_data
+        bar_data = bars
+        latest_bar_data = bars[-1:]
     # If there is an error, log it
     except Exception as e:
         logger.exception(
@@ -100,7 +119,21 @@ def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
     return bars
 
 
-bars = get_crypto_bar_data('BTCUSD', '2022-01-01', today, 'FTXU')
+async def check_condition():
+    logger.info("Checking Buy/Sell conditions for Bollinger bands and RSI")
+    if latest_bar_data.empty:
+        logger.info("Unable to get latest bar data")
+    # If bollinger high indicator is 1 and RSI is above the upperbound, then buy
+    if latest_bar_data['bb_hi'] == 1 and latest_bar_data['rsi'] > rsi_upper_bound:
+        logger.info(
+            "Sell signal: Bollinger bands and RSI are above upper bound")
+    elif latest_bar_data['bb_li'] == 1 and latest_bar_data['rsi'] < rsi_lower_bound:
+        logger.info("Buy signal: Bollinger bands and RSI are below lower bound")
+    else:
+        logger.info("Hold signal: Bollinger bands and RSI are within bounds")
+
+
+# bars = get_crypto_bar_data('BTCUSD', '2022-01-01', today, 'FTXU')
 
 
 def get_daily_returns(df):
@@ -224,6 +257,10 @@ def backtest_returns(df):
             equity = df.loc[index, 'trading_returns']
         else:
             df.loc[index, 'trading_returns'] = equity
+        fig.add_trace(go.Scatter(x=portfolio['timestamp'], y=portfolio['close'],
+                      name='Buy', mode='markers', marker_color='green', marker_symbol=[49], marker_size=10))
+        fig.add_trace(go.Scatter(x=selling_points['timestamp'], y=selling_points['close'],
+                      name='Sell', mode='markers', marker_color='red', marker_symbol=[50], marker_size=10))
 
     fig = px.line(portfolio[['trading_returns', 'buy_hold_returns']],
                   color_discrete_sequence=['green', 'blue'])
@@ -232,7 +269,7 @@ def backtest_returns(df):
     return df
 
 
-portfolio = backtest_returns(portfolio)
+# portfolio = backtest_returns(portfolio)
 
 print("Portfolio after backtesting: \n", portfolio)
 
@@ -323,7 +360,6 @@ def plot_signals():
     fig.show()
 
 
-plot_signals()
-# loop = asyncio.get_event_loop()
-# loop.run_until_complete(main())
-# loop.close()
+loop = asyncio.get_event_loop()
+loop.run_until_complete(main())
+loop.close()

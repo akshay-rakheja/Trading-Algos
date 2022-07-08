@@ -44,7 +44,6 @@ one_year_ago = datetime.now() - relativedelta(years=1)
 trading_pair = 'BTCUSD'
 exchange = 'FTXU'
 start_date = str(one_year_ago.date())
-print(start_date)
 today = date.today()
 today = today.strftime("%Y-%m-%d")
 rsi_upper_bound = 60
@@ -83,8 +82,8 @@ async def main():
             trading_pair, start_date, today, exchange))
         # Wait for the tasks to finish
         await asyncio.wait([l1])
-        print(latest_bar_data)
-        print(bar_data)
+        # print(latest_bar_data)
+        # print(bar_data)
         await check_condition()
         # Wait for the a certain amount of time between each quote request
         await asyncio.sleep(waitTime)
@@ -94,7 +93,7 @@ async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
     '''
     Get bar data from Alpaca for a given trading pair and exchange
     '''
-    print("ENd date is: ", end_date)
+    # print("ENd date is: ", end_date)
     try:
 
         bars = client.get_crypto_bars(
@@ -154,9 +153,20 @@ async def check_condition():
     if ((latest_bar_data['bb_hi'].values[0] == 1) & (latest_bar_data['rsi'].values[0] > rsi_upper_bound) & (btc_position > 0)):
         logger.info(
             "Sell signal: Bollinger bands and RSI are above upper bound")
-        order = await post_alpaca_order
+        sell_order = await post_alpaca_order(trading_pair, btc_position, 'sell', 'market', 'gtc')
+        if sell_order['status'] == 'accepted':
+            logger.info("Sell order successfully placed for {0} {1}".format(
+                btc_position, trading_pair))
+        else:
+            logger.info("Sell order status: {0}".format(sell_order))
     elif ((latest_bar_data['bb_li'].values[0] == 1) & (latest_bar_data['rsi'].values[0] < rsi_lower_bound) & (btc_position == 0)):
         logger.info("Buy signal: Bollinger bands and RSI are below lower bound")
+        buy_order = await post_alpaca_order(trading_pair, btc_position, 'buy', 'market', 'gtc')
+        if buy_order['status'] == 'accepted':
+            logger.info("Buy order successfully placed for {0} {1}".format(
+                btc_position, trading_pair))
+        else:
+            logger.info("Buy order status: {0}".format(buy_order))
     else:
         logger.info("Hold signal: Bollinger bands and RSI are within bounds")
 

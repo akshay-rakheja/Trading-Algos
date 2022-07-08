@@ -48,6 +48,7 @@ today = date.today()
 today = today.strftime("%Y-%m-%d")
 rsi_upper_bound = 60
 rsi_lower_bound = 40
+bollinger_window = 20
 
 bar_data = 0
 latest_bar_data = 0
@@ -56,6 +57,7 @@ latest_bar_data = 0
 waitTime = 60
 active_position = False
 btc_position = 0
+usd_position = 0
 
 
 async def main():
@@ -68,12 +70,13 @@ async def main():
     # Log the current balance of the MATIC token in our Alpaca account
     logger.info('BTC Position on Alpaca: {0}'.format(get_positions()))
     # Log the current Cash Balance (USD) in our Alpaca account
-    logger.info("USD position on Alpaca: {0}".format(
-        get_account_details()['cash']))
+    global usd_position
+    usd_position = float(get_account_details()['cash'])
+    logger.info("USD position on Alpaca: {0}".format(usd_position))
     # Get the historical data from Alpaca
     await get_crypto_bar_data(trading_pair, start_date, today, exchange)
     # Backtest the historical data
-    # backtest_returns()
+    await backtest_returns()
 
     # Plot Bollinger bands from start date to today
     # plot_signals()
@@ -93,7 +96,6 @@ async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
     '''
     Get bar data from Alpaca for a given trading pair and exchange
     '''
-    # print("ENd date is: ", end_date)
     try:
 
         bars = client.get_crypto_bars(
@@ -134,7 +136,7 @@ async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
 async def check_condition():
     logger.info("Checking BTC position on Alpaca")
     global btc_position
-    btc_position = int(get_positions())
+    btc_position = float(get_positions())
     logger.info("Checking Buy/Sell conditions for Bollinger bands and RSI")
     logger.info("Latest Closing Price: {0}".format(
         latest_bar_data['close'].values[0]))
@@ -151,20 +153,31 @@ async def check_condition():
         logger.info("Unable to get latest bar data")
     # If bollinger high indicator is 1 and RSI is above the upperbound, then buy
     if ((latest_bar_data['bb_hi'].values[0] == 1) & (latest_bar_data['rsi'].values[0] > rsi_upper_bound) & (btc_position > 0)):
+        # if True:
         logger.info(
             "Sell signal: Bollinger bands and RSI are above upper bound")
         sell_order = await post_alpaca_order(trading_pair, btc_position, 'sell', 'market', 'gtc')
         if sell_order['status'] == 'accepted':
             logger.info("Sell order successfully placed for {0} {1}".format(
                 btc_position, trading_pair))
+        elif (sell_order['status'] == 'pending_new'):
+            logger.info("Sell order is pending.")
+            logger.info("BTC Position on Alpaca: {0}".format(get_positions()))
         else:
             logger.info("Sell order status: {0}".format(sell_order))
     elif ((latest_bar_data['bb_li'].values[0] == 1) & (latest_bar_data['rsi'].values[0] < rsi_lower_bound) & (btc_position == 0)):
         logger.info("Buy signal: Bollinger bands and RSI are below lower bound")
-        buy_order = await post_alpaca_order(trading_pair, btc_position, 'buy', 'market', 'gtc')
+        print(type(latest_bar_data['close'].values[0]))
+        print(type(usd_position))
+        qty_to_buy = (0.2 * usd_position) / latest_bar_data['close'].values[0]
+        print("Qty to buy: ", qty_to_buy)
+        buy_order = await post_alpaca_order(trading_pair, qty_to_buy, 'buy', 'market', 'gtc')
         if buy_order['status'] == 'accepted':
             logger.info("Buy order successfully placed for {0} {1}".format(
-                btc_position, trading_pair))
+                qty_to_buy, trading_pair))
+        elif (buy_order['status'] == 'pending_new'):
+            logger.info("Buy order is pending.")
+            logger.info("BTC Position on Alpaca: {0}".format(get_positions()))
         else:
             logger.info("Buy order status: {0}".format(buy_order))
     else:
@@ -210,7 +223,7 @@ def get_buy_hold_returns(df):
 def get_bb(df):
     # calculate bollinger bands
     indicator_bb = BollingerBands(
-        close=df["close"], window=20, window_dev=2)
+        close=df["close"], window=bollinger_window, window_dev=2)
     # Add Bollinger Bands to the dataframe
     df['bb_mavg'] = indicator_bb.bollinger_mavg()
     df['bb_high'] = indicator_bb.bollinger_hband()
@@ -232,18 +245,6 @@ def get_rsi(df):
     indicator_rsi = RSIIndicator(close=df["close"], window=14)
     df['rsi'] = indicator_rsi.rsi()
     return df
-
-
-# bars = get_rsi(bars)
-
-# bars = get_bb(bars)
-# print(bars.shape)
-# bars = bars.dropna()
-# print(bars.shape)
-# print(bars.loc[bars['rsi'] > rsi_upper_bound].shape)
-# print(bars.loc[bars['bb_hi'] > 0].shape)
-# bars = bars.reset_index(drop=True)
-# print(bars[-1:])
 
 
 def sell_points(df):
@@ -274,7 +275,7 @@ def buy_points(df):
 #                      left_index=True, right_index=True)
 
 
-def backtest_returns(df):
+async def backtest_returns(df):
 
     # Backtest of SMA crossover strategy
     active_position = False
@@ -325,12 +326,14 @@ def get_positions():
         if positions.status_code != 200:
             logger.info(
                 "Undesirable response from Alpaca! {}".format(positions.json()))
-        btc_position = positions.json()[0]['qty']
+        if len(positions.json()) != 0:
+            btc_position = positions.json()[0]['qty']
+        else:
+            btc_position = 0
         logger.info('BTC Position on Alpaca: {0}'.format(btc_position))
     except Exception as e:
         logger.exception(
             "There was an issue getting positions from Alpaca: {0}".format(e))
-
     return btc_position
 
 

@@ -6,3 +6,4 @@ pandas
 numpy
 matplotlib
 TA-lib
+backtrader

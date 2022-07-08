@@ -1,3 +1,4 @@
+from dateutil.relativedelta import relativedelta
 import config
 import logging
 import asyncio
@@ -14,6 +15,7 @@ from alpaca.common.time import TimeFrame
 import json
 import plotly.graph_objects as go
 import plotly.express as px
+from datetime import datetime
 
 # import talib as ta
 # import plotly.graph_objects as go
@@ -37,10 +39,12 @@ HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
 client = HistoricalDataClient(
     config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
 
+one_year_ago = datetime.now() - relativedelta(years=1)
 # Trading variables
 trading_pair = 'BTCUSD'
 exchange = 'FTXU'
-start_date = '2020-01-01'
+start_date = str(one_year_ago.date())
+print(start_date)
 today = date.today()
 today = today.strftime("%Y-%m-%d")
 rsi_upper_bound = 60
@@ -49,8 +53,8 @@ rsi_lower_bound = 40
 bar_data = 0
 latest_bar_data = 0
 
-# Wait time between each bar request -> 1 hour
-waitTime = 3600
+# Wait time between each bar request -> 1 hour (3600 seconds)
+waitTime = 60
 active_position = False
 btc_position = 0
 
@@ -67,16 +71,20 @@ async def main():
     # Log the current Cash Balance (USD) in our Alpaca account
     logger.info("USD position on Alpaca: {0}".format(
         get_account_details()['cash']))
-    get_crypto_bar_data(trading_pair, start_date, today, exchange)
+    # Get the historical data from Alpaca
+    await get_crypto_bar_data(trading_pair, start_date, today, exchange)
+    # Backtest the historical data
+    # backtest_returns()
 
     # Plot Bollinger bands from start date to today
-    plot_signals()
+    # plot_signals()
     while True:
         l1 = loop.create_task(get_crypto_bar_data(
             trading_pair, start_date, today, exchange))
         # Wait for the tasks to finish
         await asyncio.wait([l1])
         print(latest_bar_data)
+        print(bar_data)
         await check_condition()
         # Wait for the a certain amount of time between each quote request
         await asyncio.sleep(waitTime)
@@ -107,6 +115,8 @@ async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
         bars = get_bb(bars)
         bars = bars.dropna()
         bars = bars.reset_index(drop=True)
+        bars = get_daily_returns(bars)
+        bars = get_cumulative_return(bars)
 
         # Assigning bar data to global variables
         global latest_bar_data
@@ -125,15 +135,27 @@ async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
 async def check_condition():
     logger.info("Checking BTC position on Alpaca")
     global btc_position
-    btc_position = get_positions()
+    btc_position = int(get_positions())
     logger.info("Checking Buy/Sell conditions for Bollinger bands and RSI")
+    logger.info("Latest Closing Price: {0}".format(
+        latest_bar_data['close'].values[0]))
+    logger.info("Latest Upper BB Value: {0}".format(
+        latest_bar_data['bb_high'].values[0]))
+    logger.info("Latest MAvg BB Value: {0}".format(
+        latest_bar_data['bb_mavg'].values[0]))
+    logger.info("Latest Lower BB Value: {0}".format(
+        latest_bar_data['bb_low'].values[0]))
+    logger.info("Latest RSI Value: {0}".format(
+        latest_bar_data['rsi'].values[0]))
+
     if latest_bar_data.empty:
         logger.info("Unable to get latest bar data")
     # If bollinger high indicator is 1 and RSI is above the upperbound, then buy
-    if latest_bar_data['bb_hi'] == 1 and latest_bar_data['rsi'] > rsi_upper_bound and btc_position > 0:
+    if ((latest_bar_data['bb_hi'].values[0] == 1) & (latest_bar_data['rsi'].values[0] > rsi_upper_bound) & (btc_position > 0)):
         logger.info(
             "Sell signal: Bollinger bands and RSI are above upper bound")
-    elif latest_bar_data['bb_li'] == 1 and latest_bar_data['rsi'] < rsi_lower_bound and btc_position == 0:
+        order = await post_alpaca_order
+    elif ((latest_bar_data['bb_li'].values[0] == 1) & (latest_bar_data['rsi'].values[0] < rsi_lower_bound) & (btc_position == 0)):
         logger.info("Buy signal: Bollinger bands and RSI are below lower bound")
     else:
         logger.info("Hold signal: Bollinger bands and RSI are within bounds")
@@ -151,7 +173,7 @@ def get_daily_returns(df):
 
 
 def get_cumulative_return(df):
-    df['cumulative_return'] = bars['daily_returns'].add(1).cumprod().sub(1)
+    df['cumulative_return'] = df['daily_returns'].add(1).cumprod().sub(1)
     return df
 
 
@@ -179,6 +201,7 @@ def get_bb(df):
     # calculate bollinger bands
     indicator_bb = BollingerBands(
         close=df["close"], window=20, window_dev=2)
+    # Add Bollinger Bands to the dataframe
     df['bb_mavg'] = indicator_bb.bollinger_mavg()
     df['bb_high'] = indicator_bb.bollinger_hband()
     df['bb_low'] = indicator_bb.bollinger_lband()
@@ -320,7 +343,7 @@ def get_account_details():
 
 
 # Post an Order to Alpaca
-def post_Alpaca_order(symbol, qty, side, type, time_in_force):
+async def post_alpaca_order(symbol, qty, side, type, time_in_force):
     '''
     Post an order to Alpaca
     '''

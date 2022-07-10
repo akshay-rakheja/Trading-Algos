@@ -4,6 +4,6 @@ requests
 asyncio
 pandas
 numpy
-matplotlib
+matplotlib==3.2.2
 TA-lib
 backtrader

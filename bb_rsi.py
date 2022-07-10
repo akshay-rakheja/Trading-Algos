@@ -73,16 +73,18 @@ async def main():
     # Get the historical data from Alpaca
     await get_crypto_bar_data(trading_pair, start_date, today, exchange)
     # Backtest the historical data
-    cerebro = bt.Cerebro()
-    cerebro.adddata(bar_data)
-    cerebro.addstrategy(BB_RSI_Strategy)
-    cerebro.broker.setcash(100000.0)
-    cerebro.addsizer(bt.sizers.PercentSizer, percents=20)
-    cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpe_ratio')
-    cerebro.addanalyzer(btanalyzers.Transactions, _name='transactions')
-    cerebro.addanalyzer(btanalyzers.TradeAnalyzer, _name='trades')
-    backtest = cerebro.run()
-    print("Broker value after backtesting is:\t", cerebro.broker.getvalue())
+
+    # cerebro = bt.Cerebro()
+    # cerebro.adddata(bar_data)
+    # cerebro.addstrategy(BB_RSI_Strategy)
+    # cerebro.broker.setcash(100000.0)
+    # cerebro.addsizer(bt.sizers.PercentSizer, percents=20)
+    # cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpe_ratio')
+    # cerebro.addanalyzer(btanalyzers.Transactions, _name='transactions')
+    # cerebro.addanalyzer(btanalyzers.TradeAnalyzer, _name='trades')
+    # backtest = cerebro.run()
+
+    # print("Broker value after backtesting is:\t", cerebro.broker.getvalue())
     # await backtest_returns(bar_data)
 
     # Plot Bollinger bands from start date to today

@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 # Alpaca API
 ALPACA_BASE_URL = 'https://paper-api.alpaca.markets'
-ALPACA_DATA_URL = 'https://data.alpaca.markets'
 
 HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
            'APCA-API-SECRET-KEY': config.APCA_API_SECRET_KEY}

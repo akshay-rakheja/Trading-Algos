@@ -4,7 +4,6 @@ import logging
 import asyncio
 import requests
 import pandas as pd
-import numpy as np
 from datetime import date, datetime
 from ta.volatility import BollingerBands
 from ta.momentum import RSIIndicator
@@ -12,11 +11,9 @@ from ta.utils import dropna
 from alpaca.data.historical import HistoricalDataClient
 from alpaca.common.time import TimeFrame
 import json
-import plotly.graph_objects as go
-import plotly.express as px
 import backtrader as bt
 import backtrader.analyzer as btanalyzers
-
+import backtrader.feeds as btfeeds
 
 # ENABLE LOGGING - options, DEBUG,INFO, WARNING?
 logging.basicConfig(level=logging.INFO,
@@ -51,7 +48,7 @@ bar_data = 0
 latest_bar_data = 0
 
 # Wait time between each bar request -> 1 hour (3600 seconds)
-waitTime = 60
+waitTime = 3600
 active_position = False
 btc_position = 0
 usd_position = 0
@@ -70,25 +67,13 @@ async def main():
     global usd_position
     usd_position = float(get_account_details()['cash'])
     logger.info("USD position on Alpaca: {0}".format(usd_position))
-    # Get the historical data from Alpaca
+    # Get the historical data from Alpaca for backtesting
     await get_crypto_bar_data(trading_pair, start_date, today, exchange)
-    # Backtest the historical data
+    # Add bar_data to a CSV for backtrader
+    bar_data.to_csv('bar_data.csv', index=False)
+    # Create and run a Backtest instance
+    await backtest_returns()
 
-    # cerebro = bt.Cerebro()
-    # cerebro.adddata(bar_data)
-    # cerebro.addstrategy(BB_RSI_Strategy)
-    # cerebro.broker.setcash(100000.0)
-    # cerebro.addsizer(bt.sizers.PercentSizer, percents=20)
-    # cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpe_ratio')
-    # cerebro.addanalyzer(btanalyzers.Transactions, _name='transactions')
-    # cerebro.addanalyzer(btanalyzers.TradeAnalyzer, _name='trades')
-    # backtest = cerebro.run()
-
-    # print("Broker value after backtesting is:\t", cerebro.broker.getvalue())
-    # await backtest_returns(bar_data)
-
-    # Plot Bollinger bands from start date to today
-    # plot_signals()
     while True:
         l1 = loop.create_task(get_crypto_bar_data(
             trading_pair, start_date, today, exchange))
@@ -118,7 +103,7 @@ async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
 
         bars = pd.DataFrame(bars)
         bars = bars.drop(
-            columns=["open", "high", "low", "trade_count", "symbol", "timeframe", "exchange"], axis=1)
+            columns=["trade_count", "symbol", "timeframe", "exchange"], axis=1)
 
         bars = get_rsi(bars)
 
@@ -193,15 +178,9 @@ async def check_condition():
         logger.info("Hold signal: Bollinger bands and RSI are within bounds")
 
 
-# bars = get_crypto_bar_data('BTCUSD', '2022-01-01', today, 'FTXU')
-
-
 def get_daily_returns(df):
     df['daily_returns'] = df['close'].pct_change()
     return df
-
-
-# bars = get_daily_returns(bars)
 
 
 def get_cumulative_return(df):
@@ -209,24 +188,9 @@ def get_cumulative_return(df):
     return df
 
 
-# bars = get_cumulative_return(bars)
-
-
 def get_buy_hold_returns(df):
     df['buy_hold_returns'] = (df['cumulative_return'] + 1) * 10000
     return df
-
-
-# bars = get_buy_hold_returns(bars)
-
-
-# forward fill any missing data points in our buy & hold strategies
-# and forward fill BTC_daily_return for missing data points
-# bars[['buy_hold_returns', 'daily_returns', ]] = bars[[
-#     'buy_hold_returns', 'daily_returns']].ffill()
-
-
-# print(bars)
 
 
 def get_bb(df):
@@ -256,77 +220,12 @@ def get_rsi(df):
     return df
 
 
-def sell_points(df):
-    return bar_data.loc[(bar_data['rsi'] > rsi_upper_bound) & (bar_data['bb_hi'] > 0) & (bar_data['rsi'].shift() < rsi_upper_bound) & (bar_data['bb_hi'].shift() == 0)]
+# def sell_points():
+#     return bar_data.loc[(bar_data['rsi'] > rsi_upper_bound) & (bar_data['bb_hi'] > 0) & (bar_data['rsi'].shift() < rsi_upper_bound) & (bar_data['bb_hi'].shift() == 0)]
 
 
-def buy_points(df):
-    return bar_data.loc[(bar_data['rsi'] < rsi_lower_bound) & (bar_data['bb_li'] > 0) & (bar_data['rsi'].shift() > rsi_lower_bound) & (bar_data['bb_li'].shift() == 0)]
-
-
-# print("RSI IS >70 here:\n", bars.loc[bars['rsi'] > 70])
-# print("BB bands are overbought here:\n", bars.loc[bars['bb_hi'] > 0])
-# buying_points = buy_points(bars)
-# selling_points = sell_points(bars)
-# print("Buying Points are: \n", buying_points)
-# print("Selling Points are: \n", selling_points)
-
-
-# buying_points['order'] = 'buy'
-# selling_points['order'] = 'sell'
-
-# Combine buys and sells into 1 data frame
-# orders = pd.concat([buying_points[['order']],
-#                    selling_points[['order']]]).sort_index()
-
-# new dataframe with market data and orders merged
-# portfolio = pd.merge(bars, orders, how='outer',
-#                      left_index=True, right_index=True)
-
-
-async def backtest_returns(df):
-
-    # Backtest of SMA crossover strategy
-    active_position = False
-    equity = 10000
-    buying_points = buy_points(df)
-    selling_points = sell_points(df)
-    buying_points['order'] = 'buy'
-    selling_points['order'] = 'sell'
-    print(buying_points)
-    print(selling_points)
-    # Iterate row by row of our historical data
-    for index, row in df.iterrows():
-
-        # change state of position
-        if row['order'] == 'buy':
-            active_position = True
-        elif row['order'] == 'sell':
-            active_position = False
-
-        # update strategy equity
-        if active_position:
-            df.loc[index, 'trading_returns'] = (
-                row['daily_returns'] + 1) * equity
-            equity = df.loc[index, 'trading_returns']
-        else:
-            df.loc[index, 'trading_returns'] = equity
-
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['close'],
-                      name='Buy', mode='markers', marker_color='green', marker_symbol=[49], marker_size=10))
-        fig.add_trace(go.Scatter(x=selling_points['timestamp'], y=selling_points['close'],
-                      name='Sell', mode='markers', marker_color='red', marker_symbol=[50], marker_size=10))
-
-    fig = px.line(df[['trading_returns', 'buy_hold_returns']],
-                  color_discrete_sequence=['green', 'blue'])
-    fig.show()
-
-    return df
-
-
-# portfolio = backtest_returns(portfolio)
-
-# print("Portfolio after backtesting: \n", portfolio)
+# def buy_points():
+#     return bar_data.loc[(bar_data['rsi'] < rsi_lower_bound) & (bar_data['bb_li'] > 0) & (bar_data['rsi'].shift() > rsi_lower_bound) & (bar_data['bb_li'].shift() == 0)]
 
 
 def get_positions():
@@ -397,34 +296,104 @@ async def post_alpaca_order(symbol, qty, side, type, time_in_force):
     return order.json()
 
 
-def plot_signals():
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=bars['timestamp'],
-                  y=bars['close'], name='Closing Price', fill=None, mode='lines', line_color='black'))
-    fig.add_trace(go.Scatter(x=bars['timestamp'],
-                  y=bars['bb_mavg'], name='Moving Average', fill=None, mode='lines', line_color='blue'))
-    fig.add_trace(go.Scatter(x=bars['timestamp'],
-                  y=bars['bb_high'], name='BB_High', fill='tonexty'))
-    fig.add_trace(go.Scatter(x=bars['timestamp'],
-                  y=bars['bb_low'], name='BB_Low', fill='tonexty'))
-    # print(buying_points.timestamp)
-    fig.add_trace(go.Scatter(
-        x=buying_points['timestamp'], y=buying_points['close'], name='Buy', mode='markers', marker_color='green', marker_symbol=[49], marker_size=10))
-    fig.add_trace(go.Scatter(x=selling_points['timestamp'], y=selling_points['close'],
-                  name='Sell', mode='markers', marker_color='red', marker_symbol=[50], marker_size=10))
-    fig.show()
-
-
+# Backtesting strategy
 class BB_RSI_Strategy(bt.Strategy):
+    def log(self, txt, dt=None):
+        ''' Logging function fot this strategy'''
+        dt = dt or self.datas[0].datetime.date(0)
+        print('%s, %s' % (dt.isoformat(), txt))
+
     def __init__(self):
-        self.position = False
+        # Keep a reference to the "close" line in the data[0] dataseries
+        self.dataclose = self.datas[0].close
+        # print(self.datas[0].close[0])
+        self.bband = bt.indicators.BBands(
+            self.datas[0], period=20)
+        self.rsi = bt.indicators.RSI_SMA(self.data.close, period=14)
+
+        self.order = None
+
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            # Buy/Sell order submitted/accepted to/by broker - Nothing to do
+            return
+        if order.status in [order.Completed]:
+            if order.isbuy():
+                self.log('BUY EXECUTED, %.2f' % order.executed.price)
+            elif order.issell():
+                self.log('SELL EXECUTED, %.2f' % order.executed.price)
+            # self.bar_executed = len(self)
+        self.order = None
 
     def next(self):
+        # Simply log the closing price of the series from the reference
+        self.log('Close, %.2f' % self.dataclose[0])
+        if self.order:
+            return
         if not self.position:
-            if (bar_data['rsi'] < rsi_lower_bound) & (bar_data['bb_li'] > 0) & (bar_data['rsi'].shift() > rsi_lower_bound) & (bar_data['bb_li'].shift() == 0):
-                self.buy()
-        elif (bar_data['rsi'] > rsi_upper_bound) & (bar_data['bb_hi'] > 0) & (bar_data['rsi'].shift() < rsi_upper_bound) & (bar_data['bb_hi'].shift() == 0):
-            self.close()
+            if self.dataclose[0] < self.bband.lines.bot and self.rsi[0] < rsi_lower_bound:
+                self.order = self.buy()
+                self.log('BUY CREATED, %.2f' % self.dataclose[0])
+            # if self.rsi[0] < rsi_lower_bound & self.bb_li[0] > 0:
+            #     self.order = self.buy()
+            #     self.log('BUY CREATED, %.2f' % self.dataclose[0])
+            # if self.dataclose[0] < self.dataclose[-1]:
+            #     # current close less than previous close
+
+            #     if self.dataclose[-1] < self.dataclose[-2]:
+            #         # previous close less than the previous close
+
+            #         # BUY, BUY, BUY!!! (with all possible default parameters)
+            #         self.log('BUY CREATE, %.2f' % self.dataclose[0])
+            #         self.order = self.buy()
+        else:
+            if self.dataclose[0] < self.bband.lines.bot and self.rsi[0] < rsi_lower_bound:
+                self.order = self.sell()
+                self.log('SELL CREATED, %.2f' % self.dataclose[0])
+            # if self.rsi[0] > rsi_upper_bound & self.bb_hi[0] > 0:
+            #     self.order = self.sell()
+            #     self.log('SELL CREATED, %.2f' % self.dataclose[0])
+
+
+async def backtest_returns():
+
+    cerebro = bt.Cerebro()
+    data = btfeeds.GenericCSVData(
+        dataname='bar_data.csv',
+
+        fromdate=datetime(2021, 7, 9, 0, 0, 0, 0),
+        todate=datetime(2022, 7, 8, 0, 0, 0, 0),
+
+        nullvalue=0.0,
+
+        dtformat=('%Y-%m-%dT%H:%M:%S%z'),
+        timeframe=bt.TimeFrame.Minutes,
+        compression=60,
+        datetime=0,
+        high=2,
+        low=3,
+        open=1,
+        close=4,
+        volume=5,
+        openinterest=-1,
+        rsi=7,
+        bb_hi=11,
+        bb_li=12
+
+    )
+    cerebro.broker.set_cash(100000.0)
+    cerebro.addsizer(bt.sizers.PercentSizer, percents=50)
+    cerebro.adddata(data)
+    cerebro.addstrategy(BB_RSI_Strategy)
+    print("Starting Portfolio Value: ${}".format(cerebro.broker.getvalue()))
+
+    cerebro.run()
+
+    print("Final Portfolio Value: ${}".format(cerebro.broker.getvalue()))
+
+    cerebro.plot()
+
+    return
 
 
 loop = asyncio.get_event_loop()

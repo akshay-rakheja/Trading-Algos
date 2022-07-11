@@ -7,12 +7,10 @@ import pandas as pd
 from datetime import date, datetime
 from ta.volatility import BollingerBands
 from ta.momentum import RSIIndicator
-from ta.utils import dropna
 from alpaca.data.historical import HistoricalDataClient
 from alpaca.common.time import TimeFrame
 import json
 import backtrader as bt
-import backtrader.analyzer as btanalyzers
 import backtrader.feeds as btfeeds
 
 # ENABLE LOGGING - options, DEBUG,INFO, WARNING?
@@ -40,8 +38,8 @@ exchange = 'FTXU'
 start_date = str(one_year_ago.date())
 today = date.today()
 today = today.strftime("%Y-%m-%d")
-rsi_upper_bound = 60
-rsi_lower_bound = 40
+rsi_upper_bound = 70
+rsi_lower_bound = 30
 bollinger_window = 20
 
 bar_data = 0
@@ -220,14 +218,6 @@ def get_rsi(df):
     return df
 
 
-# def sell_points():
-#     return bar_data.loc[(bar_data['rsi'] > rsi_upper_bound) & (bar_data['bb_hi'] > 0) & (bar_data['rsi'].shift() < rsi_upper_bound) & (bar_data['bb_hi'].shift() == 0)]
-
-
-# def buy_points():
-#     return bar_data.loc[(bar_data['rsi'] < rsi_lower_bound) & (bar_data['bb_li'] > 0) & (bar_data['rsi'].shift() > rsi_lower_bound) & (bar_data['bb_li'].shift() == 0)]
-
-
 def get_positions():
     '''
     Get positions on Alpaca
@@ -334,25 +324,10 @@ class BB_RSI_Strategy(bt.Strategy):
             if self.dataclose[0] < self.bband.lines.bot and self.rsi[0] < rsi_lower_bound:
                 self.order = self.buy()
                 self.log('BUY CREATED, %.2f' % self.dataclose[0])
-            # if self.rsi[0] < rsi_lower_bound & self.bb_li[0] > 0:
-            #     self.order = self.buy()
-            #     self.log('BUY CREATED, %.2f' % self.dataclose[0])
-            # if self.dataclose[0] < self.dataclose[-1]:
-            #     # current close less than previous close
-
-            #     if self.dataclose[-1] < self.dataclose[-2]:
-            #         # previous close less than the previous close
-
-            #         # BUY, BUY, BUY!!! (with all possible default parameters)
-            #         self.log('BUY CREATE, %.2f' % self.dataclose[0])
-            #         self.order = self.buy()
         else:
             if self.dataclose[0] < self.bband.lines.bot and self.rsi[0] < rsi_lower_bound:
                 self.order = self.sell()
                 self.log('SELL CREATED, %.2f' % self.dataclose[0])
-            # if self.rsi[0] > rsi_upper_bound & self.bb_hi[0] > 0:
-            #     self.order = self.sell()
-            #     self.log('SELL CREATED, %.2f' % self.dataclose[0])
 
 
 async def backtest_returns():

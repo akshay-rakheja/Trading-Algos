@@ -40,7 +40,7 @@ today = today.strftime("%Y-%m-%d")
 rsi_upper_bound = 70
 rsi_lower_bound = 30
 bollinger_window = 20
-
+percent_trade = 0.2
 bar_data = 0
 latest_bar_data = 0
 
@@ -100,18 +100,18 @@ async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
         bars = bars.drop(
             columns=["trade_count", "symbol", "timeframe", "exchange"], axis=1)
 
+        # Get RSI for the bar data
         bars = get_rsi(bars)
-
+        # Get Bollinger Bands for the bar data
         bars = get_bb(bars)
         bars = bars.dropna()
         bars = bars.reset_index(drop=True)
-        bars = get_daily_returns(bars)
-        bars = get_cumulative_return(bars)
 
         # Assigning bar data to global variables
         global latest_bar_data
         global bar_data
         bar_data = bars
+        # The latest bar data is the last bar in the bar data
         latest_bar_data = bars[-1:]
     # If there is an error, log it
     except Exception as e:
@@ -126,23 +126,23 @@ async def check_condition():
     logger.info("Checking BTC position on Alpaca")
     global btc_position
     btc_position = float(get_positions())
+    # Log the latest closing price, RSI, and Bollinger Bands
     logger.info("Checking Buy/Sell conditions for Bollinger bands and RSI")
     logger.info("Latest Closing Price: {0}".format(
         latest_bar_data['close'].values[0]))
     logger.info("Latest Upper BB Value: {0}".format(
-        latest_bar_data['bb_high'].values[0]))
+        latest_bar_data['bb_upper'].values[0]))
     logger.info("Latest MAvg BB Value: {0}".format(
         latest_bar_data['bb_mavg'].values[0]))
     logger.info("Latest Lower BB Value: {0}".format(
-        latest_bar_data['bb_low'].values[0]))
+        latest_bar_data['bb_lower'].values[0]))
     logger.info("Latest RSI Value: {0}".format(
         latest_bar_data['rsi'].values[0]))
 
     if latest_bar_data.empty:
         logger.info("Unable to get latest bar data")
-    # If bollinger high indicator is 1 and RSI is above the upperbound, then buy
+    # If we have a position, bollinger high indicator is 1 and RSI is above the upperbound, then sell
     if ((latest_bar_data['bb_hi'].values[0] == 1) & (latest_bar_data['rsi'].values[0] > rsi_upper_bound) & (btc_position > 0)):
-        # if True:
         logger.info(
             "Sell signal: Bollinger bands and RSI are above upper bound")
         sell_order = await post_alpaca_order(trading_pair, btc_position, 'sell', 'market', 'gtc')
@@ -154,12 +154,11 @@ async def check_condition():
             logger.info("BTC Position on Alpaca: {0}".format(get_positions()))
         else:
             logger.info("Sell order status: {0}".format(sell_order))
+    # If we do not have a position, bollinger low indicator is 1 and RSI is below the lowerbound, then buy
     elif ((latest_bar_data['bb_li'].values[0] == 1) & (latest_bar_data['rsi'].values[0] < rsi_lower_bound) & (btc_position == 0)):
         logger.info("Buy signal: Bollinger bands and RSI are below lower bound")
-        print(type(latest_bar_data['close'].values[0]))
-        print(type(usd_position))
-        qty_to_buy = (0.2 * usd_position) / latest_bar_data['close'].values[0]
-        print("Qty to buy: ", qty_to_buy)
+        qty_to_buy = (percent_trade * usd_position) / \
+            latest_bar_data['close'].values[0]
         buy_order = await post_alpaca_order(trading_pair, qty_to_buy, 'buy', 'market', 'gtc')
         if buy_order['status'] == 'accepted':
             logger.info("Buy order successfully placed for {0} {1}".format(
@@ -169,6 +168,7 @@ async def check_condition():
             logger.info("BTC Position on Alpaca: {0}".format(get_positions()))
         else:
             logger.info("Buy order status: {0}".format(buy_order))
+    # If we do not meet the above conditions, then we hold till we analyze the next bar
     else:
         logger.info("Hold signal: Bollinger bands and RSI are within bounds")
 
@@ -183,29 +183,19 @@ def get_cumulative_return(df):
     return df
 
 
-def get_buy_hold_returns(df):
-    df['buy_hold_returns'] = (df['cumulative_return'] + 1) * 10000
-    return df
-
-
 def get_bb(df):
     # calculate bollinger bands
     indicator_bb = BollingerBands(
         close=df["close"], window=bollinger_window, window_dev=2)
     # Add Bollinger Bands to the dataframe
     df['bb_mavg'] = indicator_bb.bollinger_mavg()
-    df['bb_high'] = indicator_bb.bollinger_hband()
-    df['bb_low'] = indicator_bb.bollinger_lband()
+    df['bb_upper'] = indicator_bb.bollinger_hband()
+    df['bb_lower'] = indicator_bb.bollinger_lband()
 
     # Add Bollinger Band high indicator
     df['bb_hi'] = indicator_bb.bollinger_hband_indicator()
     # Add Bollinger Band low indicator
     df['bb_li'] = indicator_bb.bollinger_lband_indicator()
-    # Add Width Size Bollinger Bands
-    df['bb_w'] = indicator_bb.bollinger_wband()
-    # Add Percentage Bollinger Bands
-    df['bb_p'] = indicator_bb.bollinger_pband()
-    # print(df)
     return df
 
 

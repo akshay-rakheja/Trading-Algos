@@ -30,10 +30,10 @@ HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
 client = HistoricalDataClient(
     config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
 
-one_year_ago = datetime.now() - relativedelta(years=1)
-# Trading variables
+# Trading and Backtesting variables
 trading_pair = 'BTCUSD'
 exchange = 'FTXU'
+one_year_ago = datetime.now() - relativedelta(years=1)
 start_date = str(one_year_ago.date())
 today = date.today()
 today = today.strftime("%Y-%m-%d")
@@ -46,7 +46,6 @@ latest_bar_data = 0
 
 # Wait time between each bar request -> 1 hour (3600 seconds)
 waitTime = 3600
-active_position = False
 btc_position = 0
 usd_position = 0
 
@@ -76,10 +75,9 @@ async def main():
             trading_pair, start_date, today, exchange))
         # Wait for the tasks to finish
         await asyncio.wait([l1])
-        # print(latest_bar_data)
-        # print(bar_data)
+        # Check if any trading condition is met
         await check_condition()
-        # Wait for the a certain amount of time between each quote request
+        # Wait for the a certain amount of time between each bar request
         await asyncio.sleep(waitTime)
 
 

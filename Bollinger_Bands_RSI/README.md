@@ -313,6 +313,7 @@ async def post_alpaca_order(symbol, qty, side, type, time_in_force):
                'side': side,
                'type': type,
                'time_in_force': time_in_force,
+               'client_order_id': 'bb_rsi_strategy'
            })
        logger.info('Alpaca order reply status code: {0}'.format(
            order.status_code))

@@ -275,15 +275,16 @@ async def post_alpaca_order(symbol, qty, side, type, time_in_force):
 
 # Backtesting strategy
 class BB_RSI_Strategy(bt.Strategy):
+    '''Class to backtest Bollinger Bands and RSI strategy'''
+
     def log(self, txt, dt=None):
-        ''' Logging function fot this strategy'''
+        # Logging function for this strategy
         dt = dt or self.datas[0].datetime.date(0)
         print('%s, %s' % (dt.isoformat(), txt))
 
     def __init__(self):
-        # Keep a reference to the "close" line in the data[0] dataseries
+        # Initialize the strategy data and indicators
         self.dataclose = self.datas[0].close
-        # print(self.datas[0].close[0])
         self.bband = bt.indicators.BBands(
             self.datas[0], period=20)
         self.rsi = bt.indicators.RSI_SMA(self.data.close, period=14)
@@ -291,15 +292,17 @@ class BB_RSI_Strategy(bt.Strategy):
         self.order = None
 
     def notify_order(self, order):
+        # Notification of an order being submitted/filled
         if order.status in [order.Submitted, order.Accepted]:
             # Buy/Sell order submitted/accepted to/by broker - Nothing to do
             return
+        # If the order has been completed we log it
         if order.status in [order.Completed]:
             if order.isbuy():
                 self.log('BUY EXECUTED, %.2f' % order.executed.price)
             elif order.issell():
                 self.log('SELL EXECUTED, %.2f' % order.executed.price)
-            # self.bar_executed = len(self)
+
         self.order = None
 
     def next(self):
@@ -307,10 +310,14 @@ class BB_RSI_Strategy(bt.Strategy):
         self.log('Close, %.2f' % self.dataclose[0])
         if self.order:
             return
+        # If we do not have a position, the closing price is below the lower
+        # BBand and RSI is lower than the lower bound then we enter a long position (BUY)
         if not self.position:
             if self.dataclose[0] < self.bband.lines.bot and self.rsi[0] < rsi_lower_bound:
                 self.order = self.buy()
                 self.log('BUY CREATED, %.2f' % self.dataclose[0])
+        # If we have a position, the closing price is above the upper BBand and RSI is above
+        # the upper bound then we sell our position
         else:
             if self.dataclose[0] < self.bband.lines.bot and self.rsi[0] < rsi_lower_bound:
                 self.order = self.sell()
@@ -344,7 +351,7 @@ async def backtest_returns():
 
     )
     cerebro.broker.set_cash(100000.0)
-    cerebro.addsizer(bt.sizers.PercentSizer, percents=50)
+    cerebro.addsizer(bt.sizers.PercentSizer, percents=20)
     cerebro.adddata(data)
     cerebro.addstrategy(BB_RSI_Strategy)
     print("Starting Portfolio Value: ${}".format(cerebro.broker.getvalue()))

@@ -7,8 +7,9 @@ import pandas as pd
 from datetime import date, datetime
 from ta.volatility import BollingerBands
 from ta.momentum import RSIIndicator
-from alpaca.data.historical import HistoricalDataClient
-from alpaca.common.time import TimeFrame
+# from alpaca.data.historical import HistoricalDataClient
+# from alpaca.common.time import TimeFrame
+from alpaca_trade_api.rest import REST, TimeFrame
 import json
 import backtrader as bt
 import backtrader.feeds as btfeeds
@@ -27,8 +28,7 @@ HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
 
 
 # Alpaca client
-client = HistoricalDataClient(
-    config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
+client = REST(config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
 
 # Trading and Backtesting variables
 trading_pair = 'BTCUSD'
@@ -88,24 +88,17 @@ async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
     try:
 
         bars = client.get_crypto_bars(
-            trading_pair, TimeFrame.Hour, start=start_date, end=end_date, limit=10000, exchanges=exchange)
+            trading_pair, TimeFrame.Hour, start=start_date, end=end_date, limit=10000, exchanges=exchange).df
 
-        bars = bars.json()
-
-        bars = json.loads(bars)
-
-        bars = bars['bar_set'][trading_pair]
-
-        bars = pd.DataFrame(bars)
         bars = bars.drop(
-            columns=["trade_count", "symbol", "timeframe", "exchange"], axis=1)
+            columns=["trade_count", "exchange"], axis=1)
 
         # Get RSI for the bar data
         bars = get_rsi(bars)
         # Get Bollinger Bands for the bar data
         bars = get_bb(bars)
         bars = bars.dropna()
-        bars = bars.reset_index(drop=True)
+        bars['timestamp'] = bars.index
 
         # Assigning bar data to global variables
         global latest_bar_data
@@ -336,20 +329,19 @@ async def backtest_returns():
 
         nullvalue=0.0,
 
-        dtformat=('%Y-%m-%dT%H:%M:%S%z'),
+        dtformat=('%Y-%m-%d %H:%M:%S%z'),
         timeframe=bt.TimeFrame.Minutes,
         compression=60,
-        datetime=0,
-        high=2,
-        low=3,
-        open=1,
-        close=4,
-        volume=5,
+        datetime=12,
+        high=1,
+        low=2,
+        open=0,
+        close=3,
+        volume=4,
         openinterest=-1,
-        rsi=7,
-        bb_hi=11,
-        bb_li=12
-
+        rsi=6,
+        bb_hi=10,
+        bb_li=11
     )
     cerebro.broker.set_cash(100000.0)
     cerebro.addsizer(bt.sizers.PercentSizer, percents=20)

@@ -37,8 +37,7 @@ import pandas as pd
 from datetime import date, datetime
 from ta.volatility import BollingerBands
 from ta.momentum import RSIIndicator
-from alpaca.data.historical import HistoricalDataClient
-from alpaca.common.time import TimeFrame
+from alpaca_trade_api.rest import REST, TimeFrame
 import json
 import backtrader as bt
 import backtrader.feeds as btfeeds
@@ -62,11 +61,11 @@ HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
 
 
 # Alpaca client
-client = HistoricalDataClient(
-   config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
+client = REST(config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
+
 ```
 
-In the code block above, we are setting the logging tool so we can log our bot output. This will help us better understand the current status of the bot. The above snippet also initializes the key parameters we will be using to make API calls through Alpaca. `ALPACA_BASE_URL` is used to access the trading API that Alpaca provides. You might notice that this url has its value set to `https://paper-api.alpaca.markets`. This gets you access to a paper trading account once you register with Alpaca. It is always a good idea to try a new strategy using a paper trading account first. Once you are confident enough to trade with real money, this url can be changed to `https://api.alpaca.markets`. We will be using alpaca-py’s HistoricalDataClient method to get the latest bar data for our trading pair `BTCUSD`. To complete a request to Alpaca using `alpaca-py`, we need to pass our Alpaca’s Key ID and Secret Key. This information needs to be kept secret since anyone with access to your KeyID and Secret Key can access your Alpaca account. To keep these credentials secret, I have defined them in a file called config.py.
+In the code block above, we are setting the logging tool so we can log our bot output. This will help us better understand the current status of the bot. The above snippet also initializes the key parameters we will be using to make API calls through Alpaca. `ALPACA_BASE_URL` is used to access the trading API that Alpaca provides. You might notice that this url has its value set to `https://paper-api.alpaca.markets`. This gets you access to a paper trading account once you register with Alpaca. It is always a good idea to try a new strategy using a paper trading account first. Once you are confident enough to trade with real money, this url can be changed to `https://api.alpaca.markets`. We will be using alpaca_trade_api’s REST client to get the latest bar data for our trading pair `BTCUSD`. To complete a request to Alpaca using `alpaca_trade_api`, we need to pass our Alpaca’s Key ID and Secret Key. This information needs to be kept secret since anyone with access to your KeyID and Secret Key can access your Alpaca account. To keep these credentials secret, I have defined them in a file called config.py.
 
 ```
 trading_pair = 'BTCUSD'
@@ -129,47 +128,40 @@ Now that we have a good understanding of what’s happening in the main method, 
 
 ```
 async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
-   '''
-   Get bar data from Alpaca for a given trading pair and exchange
-   '''
-   try:
+    '''
+    Get bar data from Alpaca for a given trading pair and exchange
+    '''
+    try:
 
-       bars = client.get_crypto_bars(
-           trading_pair, TimeFrame.Hour, start=start_date, end=end_date, limit=10000, exchanges=exchange)
+        bars = client.get_crypto_bars(
+            trading_pair, TimeFrame.Hour, start=start_date, end=end_date, limit=10000, exchanges=exchange).df
 
-       bars = bars.json()
+        bars = bars.drop(
+            columns=["trade_count", "exchange"], axis=1)
 
-       bars = json.loads(bars)
+        # Get RSI for the bar data
+        bars = get_rsi(bars)
+        # Get Bollinger Bands for the bar data
+        bars = get_bb(bars)
+        bars = bars.dropna()
+        bars['timestamp'] = bars.index
 
-       bars = bars['bar_set'][trading_pair]
+        # Assigning bar data to global variables
+        global latest_bar_data
+        global bar_data
+        bar_data = bars
+        # The latest bar data is the last bar in the bar data
+        latest_bar_data = bars[-1:]
+    # If there is an error, log it
+    except Exception as e:
+        logger.exception(
+            "There was an issue getting trade quote from Alpaca: {0}".format(e))
+        return False
 
-       bars = pd.DataFrame(bars)
-       bars = bars.drop(
-           columns=["trade_count", "symbol", "timeframe", "exchange"], axis=1)
-
-       # Get RSI for the bar data
-       bars = get_rsi(bars)
-       # Get Bollinger Bands for the bar data
-       bars = get_bb(bars)
-       bars = bars.dropna()
-       bars = bars.reset_index(drop=True)
-       
-       # Assigning bar data to global variables
-       global latest_bar_data
-       global bar_data
-       bar_data = bars
-       # The latest bar data is the last bar in the bar data
-       latest_bar_data = bars[-1:]
-   # If there is an error, log it
-   except Exception as e:
-       logger.exception(
-           "There was an issue getting trade quote from Alpaca: {0}".format(e))
-       return False
-
-   return bars
+    return bars
 ```
 
-First function we look at is `get_crypto_bar_data`. This code block helps us get the bar data from Alpaca. We use alpaca-py’s HistoricalDataClient and get_crypto_bar method to retrieve the historical bar data until ‘today’. Keep in mind that to get Historical Data you will need to pass in the start date of the period you want the historical data for. In our example, we have set it to a year before today’s date. Once we have the bar_data, we drop the columns that we won’t be using. These include trade_count, symbol, timeframe and exchange. With the bar data in hand, we try to add indicators we need for our strategy to work. `Get_rsi()` and `get_bb()` are helper functions that add RSI and Bollinger Bands indicators to the `bar_data` dataframe. Once the indicators are added, we initialize latest_bar_data with the last value from the bar_data dataframe. 
+First function we look at is `get_crypto_bar_data`. This code block helps us get the bar data from Alpaca. We use alpaca_trade_api’s REST client and get_crypto_bar method to retrieve the historical bar data until ‘today’. Keep in mind that to get Historical Data you will need to pass in the start date of the period you want the historical data for. In our example, we have set it to a year before today’s date. Once we have the bar_data, we drop the columns that we won’t be using. These include trade_count, symbol, timeframe and exchange. With the bar data in hand, we try to add indicators we need for our strategy to work. `get_rsi()` and `get_bb()` are helper functions that add RSI and Bollinger Bands indicators to the `bar_data` dataframe. Once the indicators are added, we initialize latest_bar_data with the last value from the bar_data dataframe. 
 
 ```
 async def check_condition():
@@ -391,42 +383,42 @@ Finally, we define the `next()` method. This method follows the logic of our ori
 ```
 async def backtest_returns():
 
-   cerebro = bt.Cerebro()
-   data = btfeeds.GenericCSVData(
-       dataname='bar_data.csv',
+    cerebro = bt.Cerebro()
+    data = btfeeds.GenericCSVData(
+        dataname='bar_data.csv',
 
-       fromdate=datetime(2021, 7, 9, 0, 0, 0, 0),
-       todate=datetime(2022, 7, 8, 0, 0, 0, 0),
+        fromdate=datetime(2021, 7, 9, 0, 0, 0, 0),
+        todate=datetime(2022, 7, 8, 0, 0, 0, 0),
 
-       nullvalue=0.0,
+        nullvalue=0.0,
 
-       dtformat=('%Y-%m-%dT%H:%M:%S%z'),
-       timeframe=bt.TimeFrame.Minutes,
-       compression=60,
-       datetime=0,
-       high=2,
-       low=3,
-       open=1,
-       close=4,
-       volume=5,
-       openinterest=-1,
-       rsi=7,
-       bb_hi=11,
-       bb_li=12
+        dtformat=('%Y-%m-%d %H:%M:%S%z'),
+        timeframe=bt.TimeFrame.Minutes,
+        compression=60,
+        datetime=12,
+        high=1,
+        low=2,
+        open=0,
+        close=3,
+        volume=4,
+        openinterest=-1,
+        rsi=6,
+        bb_hi=10,
+        bb_li=11
+    )
+    cerebro.broker.set_cash(100000.0)
+    cerebro.addsizer(bt.sizers.PercentSizer, percents=20)
+    cerebro.adddata(data)
+    cerebro.addstrategy(BB_RSI_Strategy)
+    print("Starting Portfolio Value: ${}".format(cerebro.broker.getvalue()))
 
-   )
-   cerebro.broker.set_cash(100000.0)
-   cerebro.addsizer(bt.sizers.PercentSizer, percents=20)
-   cerebro.adddata(data)
-   cerebro.addstrategy(BB_RSI_Strategy)
-   print("Starting Portfolio Value: ${}".format(cerebro.broker.getvalue()))
+    cerebro.run()
 
-   cerebro.run()
+    print("Final Portfolio Value: ${}".format(cerebro.broker.getvalue()))
 
-   print("Final Portfolio Value: ${}".format(cerebro.broker.getvalue()))
-   cerebro.plot()
+    cerebro.plot()
 
-   return
+    return
 ```
 
 Now that we have defined our backtesting class, we are ready to test it out. This involves creating an instance of `Cerebro` engine. You can read more about Cerebro [here](https://www.backtrader.com/docu/cerebro/). 

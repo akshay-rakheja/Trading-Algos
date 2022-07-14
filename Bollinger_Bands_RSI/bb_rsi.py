@@ -7,8 +7,6 @@ import pandas as pd
 from datetime import date, datetime
 from ta.volatility import BollingerBands
 from ta.momentum import RSIIndicator
-# from alpaca.data.historical import HistoricalDataClient
-# from alpaca.common.time import TimeFrame
 from alpaca_trade_api.rest import REST, TimeFrame
 import json
 import backtrader as bt

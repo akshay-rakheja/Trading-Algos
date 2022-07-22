@@ -1,4 +1,5 @@
-from alpaca_trade_api import Stream
+# from alpaca_trade_api import Stream
+from alpaca.data.live import CryptoDataStream
 import config
 import logging
 import requests
@@ -16,15 +17,15 @@ HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
            'APCA-API-SECRET-KEY': config.APCA_API_SECRET_KEY}
 
 
-client = Stream(config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
+client = CryptoDataStream(config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
 
 
 async def handler(data):
-    print(data)
+    logger.info(data)
 
 trading_pair = 'BTCUSD'
 
-client.subscribe_crypto_orderbooks(handler, trading_pair)
+client.subscribe_quotes(handler, trading_pair)
 
 client.run()
 

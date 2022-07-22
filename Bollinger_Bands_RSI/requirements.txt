@@ -1,4 +1,5 @@
 alpaca-trade-api
+alpaca-py
 plotly
 requests
 asyncio

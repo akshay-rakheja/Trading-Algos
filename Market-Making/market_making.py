@@ -20,19 +20,15 @@ HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
 client = CryptoDataStream(config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
 
 
+global cbse_price
+
+global ftx_price
+
+
 async def quote_handler(data):
     # logger.info(data)
-    # if data.exchange == 'FTXU':
-    #     logger.info('--------Quote on FTXU--------')
-    #     logger.info("Ask Price: {0}".format(data.ask_price))
-    #     logger.info("Bid Price: {0}".format(data.bid_price))
-    #     logger.info("Ask Size: {0}".format(data.ask_size))
-    #     logger.info("Bid Size: {0}".format(data.bid_size))
-    #     logger.info("Exchange: {0}".format(data.exchange))
-    #     logger.info(
-    #         "Bid-Ask Spread: {0}".format(data.ask_price - data.bid_price))
-    if data.exchange == 'CBSE':
-        logger.info('--------Quote on Coinbase---------')
+    if data.exchange == 'FTXU':
+        logger.info('--------Quote on FTXU--------')
         logger.info("Ask Price: {0}".format(data.ask_price))
         logger.info("Bid Price: {0}".format(data.bid_price))
         logger.info("Ask Size: {0}".format(data.ask_size))
@@ -40,6 +36,15 @@ async def quote_handler(data):
         logger.info("Exchange: {0}".format(data.exchange))
         logger.info(
             "Bid-Ask Spread: {0}".format(data.ask_price - data.bid_price))
+    # if data.exchange == 'CBSE':
+    #     logger.info('--------Quote on Coinbase---------')
+    #     logger.info("Ask Price: {0}".format(data.ask_price))
+    #     logger.info("Bid Price: {0}".format(data.bid_price))
+    #     logger.info("Ask Size: {0}".format(data.ask_size))
+    #     logger.info("Bid Size: {0}".format(data.bid_size))
+    #     logger.info("Exchange: {0}".format(data.exchange))
+    #     logger.info(
+    #         "Bid-Ask Spread: {0}".format(data.ask_price - data.bid_price))
 
 
 async def trade_handler(data):
@@ -47,14 +52,14 @@ async def trade_handler(data):
     ftx_price = data.price if data.exchange == 'FTXU' else None
     cbse_price = data.price if data.exchange == 'CBSE' else None
 
-    if data.exchange == 'FTXU':
-        logger.info('--------Trade on FTXU--------')
-        logger.info('Trade Price: {0}'.format(data.price))
-        logger.info('Trade Size: {0}'.format(data.size))
+    # if data.exchange == 'FTXU':
+    #     logger.info('--------Trade on FTXU--------')
+    #     logger.info('Trade Price: {0}'.format(ftx_price))
+    #     logger.info('Trade Size: {0}'.format(data.size))
 
     if data.exchange == 'CBSE':
         logger.info('--------Trade on Coinbase---------')
-        logger.info('Trade Price: {0}'.format(data.price))
+        logger.info('Trade Price: {0}'.format(cbse_price))
         logger.info('Trade Size: {0}'.format(data.size))
 
     if ftx_price and cbse_price:
@@ -64,14 +69,14 @@ async def trade_handler(data):
 trading_pair = 'BTCUSD'
 
 client.subscribe_quotes(quote_handler, trading_pair)
-# client.subscribe_trades(trade_handler, trading_pair)
+client.subscribe_trades(trade_handler, trading_pair)
 
 client.run()
 
 # Post an Order to Alpaca
 
 
-async def post_alpaca_order(symbol, qty, side, type, time_in_force):
+async def submit_order(symbol, qty, side, type, time_in_force):
     '''
     Post an order to Alpaca
     '''
@@ -101,6 +106,33 @@ async def post_alpaca_order(symbol, qty, side, type, time_in_force):
 def market_making_conditions():
     '''
     Check the market conditions to see what limit orders to place
+
+    -- if the cbse trade price is greater than ftx bid price, place a buy limit order at the cbse bid price on ftx
+
+    Alternate strategy:
+    - calculate moving average of closes, highs and lows of cbse for last 30 minutes
+    - place buy limit order at the average of the lows and sell limit orders at the average of the highs
+    - if ftx trade price is outside the average of highs and lows of cbse, close all positions until the price is within the average range
+
     '''
+
+    if global cbse_price and global ftx_price:
+        if cbse_price > ftx_price:
+            logger.info('--------Market conditions met---------')
+            logger.info('Buy order placed on FTXU')
+            logger.info('Sell order placed on Coinbase')
+            logger.info('--------Market conditions met---------')
+            return True
+        elif cbse_price < ftx_price:
+            logger.info('--------Market conditions met---------')
+            logger.info('Sell order placed on FTXU')
+            logger.info('Buy order placed on Coinbase')
+            logger.info('--------Market conditions met---------')
+            return True
+        else:
+            logger.info('--------Market conditions met---------')
+            logger.info('No orders placed')
+            logger.info('--------Market conditions met---------')
+            return True
 
     pass

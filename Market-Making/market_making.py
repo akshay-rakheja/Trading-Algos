@@ -1,9 +1,13 @@
 from alpaca.data.historical import CryptoHistoricalDataClient
 from alpaca.data.requests import CryptoBarsRequest, CryptoQuotesRequest, CryptoTradesRequest
+from alpaca.trading.requests import GetOrdersRequest
 from alpaca.data.timeframe import TimeFrame
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce, OrderStatus
 from datetime import datetime, timedelta, date
 from dateutil.relativedelta import relativedelta
-from alpaca.trading.client import TradingClient
+
 import logging
 import config
 import asyncio
@@ -21,22 +25,16 @@ HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
            'APCA-API-SECRET-KEY': config.APCA_API_SECRET_KEY}
 
 
-# stream_client = CryptoDataStream(
-#     config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
 trading_client = TradingClient(
     config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY, paper=True)
 
-client = CryptoHistoricalDataClient()
+data_client = CryptoHistoricalDataClient()
 
-
-one_hour_ago = datetime.now() - relativedelta(minute=10)
-print(one_hour_ago)
-
-request_params = CryptoBarsRequest(
-    symbol_or_symbols=["ETH/USD"],
-    timeframe=TimeFrame.Minute,
-    start=one_hour_ago
-)
+trading_pair = 'ETH/USD'
+notional_size = 20000
+spread = 0.00
+buying_price, selling_price = 0.00, 0.00
+waitTime = 30
 
 
 async def main():
@@ -46,22 +44,27 @@ async def main():
     After backtesting, plot the results. Then, enter the loop to wait for new data and
     calculate entry and exit decisions.
     '''
-    # Log the current balance of the MATIC token in our Alpaca account
-    logger.info('BTC Position on Alpaca: {0}'.format(get_positions()))
-    # Log the current Cash Balance (USD) in our Alpaca account
-    global usd_position
-    usd_position = float(get_account_details()['cash'])
-    logger.info("USD position on Alpaca: {0}".format(usd_position))
-    # Get the historical data from Alpaca for backtesting
-    await get_crypto_bar_data(trading_pair, start_date, today, exchange)
-    # Add bar_data to a CSV for backtrader
-    bar_data.to_csv('bar_data.csv', index=False)
-    # Create and run a Backtest instance
-    await backtest_returns()
+
+    # closes all position AND also cancels all open orders
+    trading_client.close_all_positions(cancel_orders=True)
+    logger.info("Closed all positions")
+
+    # # Log the current balance of the MATIC token in our Alpaca account
+    # logger.info('BTC Position on Alpaca: {0}'.format(get_positions()))
+    # # Log the current Cash Balance (USD) in our Alpaca account
+    # global usd_position
+    # usd_position = float(get_account_details()['cash'])
+    # logger.info("USD position on Alpaca: {0}".format(usd_position))
+    # # Get the historical data from Alpaca for backtesting
+    # await get_crypto_bar_data(trading_pair, start_date, today, exchange)
+    # # Add bar_data to a CSV for backtrader
+    # bar_data.to_csv('bar_data.csv', index=False)
+    # # Create and run a Backtest instance
+    # await backtest_returns()
 
     while True:
         l1 = loop.create_task(get_crypto_bar_data(
-            trading_pair, start_date, today, exchange))
+            trading_pair))
         # Wait for the tasks to finish
         await asyncio.wait([l1])
         # Check if any trading condition is met
@@ -70,30 +73,102 @@ async def main():
         await asyncio.sleep(waitTime)
 
 
+async def get_crypto_bar_data(trading_pair):
+    '''
+    Get Crypto Bar Data from Alpaca for the last 10 minutes
+    '''
+    ten_mins_ago = datetime.now() - relativedelta(minutes=10)
+    logger.info("Getting crypto bar data for {0} from {1}".format(
+        trading_pair, ten_mins_ago))
+    # Defining Bar data request parameters
+    request_params = CryptoBarsRequest(
+        symbol_or_symbols=[trading_pair],
+        timeframe=TimeFrame.Minute,
+        start=ten_mins_ago
+    )
+    # Get the bar data from Alpaca
+    bars_df = data_client.get_crypto_bars(request_params).df
+    # Calculate the order prices
+    global buying_price, selling_price
+    buying_price, selling_price = calc_order_prices(bars_df)
+
+    return bars_df
+
+
+def calc_order_prices(bars_df):
+    max_high = bars_df['high'].max()
+    min_low = bars_df['low'].min()
+    mean_vwap = bars_df['vwap'].mean()
+
+    buying_fee = 0.003*min_low
+    selling_fee = 0.003*max_high
+
+    global spread
+    spread = max_high - min_low
+    logger.info("Spread to capture: {0}".format(spread))
+    logger.info("Mean VWAP: {0}".format(mean_vwap))
+    logger.info("Min Low: {0}".format(min_low))
+    logger.info("Max High: {0}".format(max_high))
+    logger.info("Total Fees: {0}".format(buying_fee + selling_fee))
+
+    selling_price = max_high*0.995
+    buying_price = min_low*1.005
+    return buying_price, selling_price
+
+
+def get_positions():
+    positions = trading_client.get_all_positions()
+    return positions
+
+
+# Post an Order to Alpaca
+async def post_alpaca_order(price, side):
+    '''
+    Post an order to Alpaca
+    '''
+    try:
+        if side == 'buy':
+            limit_order_data = LimitOrderRequest(
+                symbol="BTC/USD",
+                limit_price=price,
+                notional=notional_size,
+                side=OrderSide.BUY,
+                time_in_force=TimeInForce.FOK
+            )
+            buy_limit_order = trading_client.submit_order(
+                order_data=limit_order_data
+            )
+            logger.info(
+                "Buy Limit Order placed for ETH/USD at : {0}".format(buy_limit_order.limit_price))
+            return buy_limit_order
+        else:
+            limit_order_data = LimitOrderRequest(
+                symbol="BTC/USD",
+                limit_price=price,
+                notional=notional_size,
+                side=OrderSide.SELL,
+                time_in_force=TimeInForce.FOK
+            )
+            sell_limit_order = trading_client.submit_order(
+                order_data=limit_order_data
+            )
+            logger.info(
+                "Sell Limit Order placed for ETH/USD at : {0}".format(sell_limit_order.limit_price))
+            return sell_limit_order
+
+        # if order.status_code != 200:
+        #     logger.info(
+        #         "Undesirable response from Alpaca! {}".format(order.json()))
+        #     return False
+    except Exception as e:
+        logger.exception(
+            "There was an issue posting order to Alpaca: {0}".format(e))
+        return False
+
+
 loop = asyncio.get_event_loop()
 loop.run_until_complete(main())
 loop.close()
-
-bars_df = client.get_crypto_bars(request_params).df
-
-
-max_high = bars_df['high'].max()
-min_low = bars_df['low'].min()
-mean_vwap = bars_df['vwap'].mean()
-mean_close = bars_df['close'].mean()
-
-buying_fee = 0.003*min_low
-selling_fee = 0.003*max_high
-
-print("Total fees: {0}".format(buying_fee + selling_fee))
-
-diff = max_high - min_low
-print("Spread: {0}".format(diff))
-
-print("Mean Close: {0}".format(mean_close))
-print("Mean VWAP: {0}".format(mean_vwap))
-print("Max High: ", max_high)
-print("Min Low: ", min_low)
 
 
 async def quote_handler(data):

@@ -262,8 +262,6 @@ async def check_condition():
             logger.info(
                 "Current price < buying price. Closing Sell Limit Order, will place again in next check")
 
-    pass
-
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(main())

@@ -38,11 +38,14 @@ client_order_str = 'scalping'
 # Wait time between each bar request
 waitTime = 60
 
+# Time range for the latest bar data
+diff = 5
+
 # Current position of the trading pair on Alpaca
 current_position = 0
 
-# Threshold percentage to cut losses
-cut_loss_threshold = 0.5
+# Threshold percentage to cut losses (0.5%)
+cut_loss_threshold = 0.005
 
 # Alpaca trading fee is 0.3% (tier based)
 trading_fee = 0.003
@@ -70,16 +73,16 @@ async def main():
 
 async def get_crypto_bar_data(trading_pair):
     '''
-    Get Crypto Bar Data from Alpaca for the last 10 minutes
+    Get Crypto Bar Data from Alpaca for the last diff minutes
     '''
-    ten_mins_ago = datetime.now() - relativedelta(minutes=5)
+    time_diff = datetime.now() - relativedelta(minutes=diff)
     logger.info("Getting crypto bar data for {0} from {1}".format(
-        trading_pair, ten_mins_ago))
+        trading_pair, time_diff))
     # Defining Bar data request parameters
     request_params = CryptoBarsRequest(
         symbol_or_symbols=[trading_pair],
         timeframe=TimeFrame.Minute,
-        start=ten_mins_ago
+        start=time_diff
     )
     # Get the bar data from Alpaca
     bars_df = data_client.get_crypto_bars(request_params).df
@@ -238,15 +241,15 @@ async def check_condition():
 
         # Cutting losses
         # If we have do not have a position, an open buy order and the current price is above the selling price, cancel the buy limit order
-        logger.info(selling_price * (100 + cut_loss_threshold)/100)
-        if current_position == 0 and buy_order and current_price > selling_price * (100 + cut_loss_threshold)/100:
+        logger.info(selling_price * (1 + cut_loss_threshold))
+        if current_position == 0 and buy_order and current_price > (selling_price * (1 + cut_loss_threshold)):
             trading_client.close_all_positions(cancel_orders=True)
             buy_order = False
             logger.info(
                 "Current price > Selling price. Closing Buy Limit Order, will place again in next check")
         # If we have do have a position and an open sell order and current price is below the buying price, cancel the sell limit order
-        logger.info(buying_price * (100 - cut_loss_threshold)/100)
-        if current_position != 0 and sell_order and current_price < buying_price * (100 - cut_loss_threshold)/100:
+        logger.info(buying_price * (1 - cut_loss_threshold))
+        if current_position != 0 and sell_order and current_price < (buying_price * (1 - cut_loss_threshold)):
             trading_client.close_all_positions(cancel_orders=True)
             sell_order = False
             logger.info(

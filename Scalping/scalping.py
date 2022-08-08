@@ -138,7 +138,6 @@ def calc_order_prices(bars_df):
 
 
 def get_positions():
-    # get all positions
     positions = trading_client.get_all_positions()
 
     return positions
@@ -165,7 +164,6 @@ def get_open_orders():
     return num_orders
 
 
-# Post an Order to Alpaca
 async def post_alpaca_order(buy_price, sell_price, side):
     '''
     Post an order to Alpaca
@@ -194,7 +192,7 @@ async def post_alpaca_order(buy_price, sell_price, side):
                 limit_price=sell_price,
                 notional=notional_size,
                 side=OrderSide.SELL,
-                time_in_force=TimeInForce.FOK
+                time_in_force=TimeInForce.GTC
             )
             sell_limit_order = trading_client.submit_order(
                 order_data=limit_order_data

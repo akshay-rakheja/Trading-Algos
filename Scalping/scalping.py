@@ -5,7 +5,7 @@ from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce, OrderStatus
-from datetime import datetime, timedelta, date
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import json
 import logging
@@ -18,18 +18,14 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 
-# Alpaca API
-ALPACA_BASE_URL = 'https://paper-api.alpaca.markets'
-
-HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
-           'APCA-API-SECRET-KEY': config.APCA_API_SECRET_KEY}
-
-
+# Alpaca Trading Client
 trading_client = TradingClient(
     config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY, paper=True)
 
+# Alpaca Market Data Client
 data_client = CryptoHistoricalDataClient()
 
+# Trading variables
 trading_pair = 'ETH/USD'
 notional_size = 20000
 spread = 0.00
@@ -37,33 +33,29 @@ total_fees = 0
 buying_price, selling_price = 0.00, 0.00
 buy_order, sell_order = None, None
 current_price = 0.00
+client_order_str = 'scalping'
+
+# Wait time between each bar request
 waitTime = 60
+
+# Current position of the trading pair on Alpaca
 current_position = 0
+
+# Threshold percentage to cut losses
+cut_loss_threshold = 0.5
+
+# Alpaca trading fee is 0.3% (tier based)
+trading_fee = 0.003
 
 
 async def main():
     '''
-    Get historical data from Alpaca and calculate RSI and Bollinger Bands.
-    Backtest historical data to determine buy/sell/hold decisions and test performance.
-    After backtesting, plot the results. Then, enter the loop to wait for new data and
-    calculate entry and exit decisions.
+    Main function to get latest asset data and check possible trade conditions
     '''
 
     # closes all position AND also cancels all open orders
     trading_client.close_all_positions(cancel_orders=True)
     logger.info("Closed all positions")
-
-    # Log the current balance of the MATIC token in our Alpaca account
-    # # Log the current Cash Balance (USD) in our Alpaca account
-    # global usd_position
-    # usd_position = float(get_account_details()['cash'])
-    # logger.info("USD position on Alpaca: {0}".format(usd_position))
-    # # Get the historical data from Alpaca for backtesting
-    # await get_crypto_bar_data(trading_pair, start_date, today, exchange)
-    # # Add bar_data to a CSV for backtrader
-    # bar_data.to_csv('bar_data.csv', index=False)
-    # # Create and run a Backtest instance
-    # await backtest_returns()
 
     while True:
         l1 = loop.create_task(get_crypto_bar_data(
@@ -80,7 +72,7 @@ async def get_crypto_bar_data(trading_pair):
     '''
     Get Crypto Bar Data from Alpaca for the last 10 minutes
     '''
-    ten_mins_ago = datetime.now() - relativedelta(minutes=10)
+    ten_mins_ago = datetime.now() - relativedelta(minutes=5)
     logger.info("Getting crypto bar data for {0} from {1}".format(
         trading_pair, ten_mins_ago))
     # Defining Bar data request parameters
@@ -95,8 +87,9 @@ async def get_crypto_bar_data(trading_pair):
     global buying_price, selling_price, current_position
     buying_price, selling_price = calc_order_prices(bars_df)
 
-    if (get_positions()):
-        current_position = get_positions()
+    if len(get_positions()) > 0:
+        print(get_positions())
+        current_position = get_positions()[0]['qty']
         buy_order = False
     else:
         sell_order = False
@@ -111,24 +104,23 @@ def calc_order_prices(bars_df):
     mean_vwap = bars_df['vwap'].mean()
     current_price = bars_df['close'].iloc[-1]
 
-    buying_fee = 0.003*min_low
-    selling_fee = 0.003*max_high
-
-    total_fees = round(buying_fee + selling_fee, 1)
-
     logger.info("Closing Price: {0}".format(current_price))
     logger.info("Mean VWAP: {0}".format(mean_vwap))
     logger.info("Min Low: {0}".format(min_low))
     logger.info("Max High: {0}".format(max_high))
-    logger.info("Total Fees: {0}".format(total_fees))
 
-    # Buying price in 0.1% below the max high
-    selling_price = round(max_high*0.999, 1)
-    # Selling price in 0.1% above the min low
-    buying_price = round(min_low*1.001, 1)
+    # Buying price in 0.2% below the max high
+    selling_price = round(max_high*0.998, 1)
+    # Selling price in 0.2% above the min low
+    buying_price = round(min_low*1.002, 1)
+
+    buying_fee = trading_fee * buying_price
+    selling_fee = trading_fee * selling_price
+    total_fees = round(buying_fee + selling_fee, 1)
 
     logger.info("Buying Price: {0}".format(buying_price))
     logger.info("Selling Price: {0}".format(selling_price))
+    logger.info("Total Fees: {0}".format(total_fees))
 
     # Calculate the spread
     spread = round(selling_price - buying_price, 1)
@@ -180,8 +172,7 @@ async def post_alpaca_order(price, side):
                 limit_price=price,
                 notional=notional_size,
                 side=OrderSide.BUY,
-                time_in_force=TimeInForce.GTC
-            )
+                time_in_force=TimeInForce.GTC)
             buy_limit_order = trading_client.submit_order(
                 order_data=limit_order_data
             )
@@ -203,10 +194,6 @@ async def post_alpaca_order(price, side):
                 "Sell Limit Order placed for ETH/USD at : {0}".format(sell_limit_order.limit_price))
             return sell_limit_order
 
-        # if order.status_code != 200:
-        #     logger.info(
-        #         "Undesirable response from Alpaca! {}".format(order.json()))
-        #     return False
     except Exception as e:
         logger.exception(
             "There was an issue posting order to Alpaca: {0}".format(e))
@@ -217,26 +204,26 @@ async def check_condition():
     '''
     Check the market conditions to see what limit orders to place
 
-    -- if the cbse trade price is greater than ftx bid price, place a buy limit order at the cbse bid price on ftx
-
-    Alternate strategy:
+    Strategy:
     - calculate moving average of closes, highs and lows of cbse for last 30 minutes
     - place buy limit order at the average of the lows and sell limit orders at the average of the highs
-    - if ftx trade price is outside the average of highs and lows of cbse, close all positions until the price is within the average range
 
     '''
     global buy_order, sell_order, current_position, current_price, buying_price, selling_price, spread, total_fees
     num_open_orders = get_open_orders()
-    print(current_position)
-    logger.info("Current Position is: ", current_position)
+
+    logger.info("Current Position is: {0}".format(current_position))
+    logger.info(buy_order)
+    logger.info(sell_order)
     # If the spread is less than the fees, do not place an order
     if spread < total_fees:
         logger.info(
-            "Spread is less than total fees, no need to place limit orders")
+            "Spread is less than total fees, Not a profitable opportunity to trade")
     else:
         # If we do not have a position, there are no open orders and spread is greater than the total fees, place a limit buy order at the buying price
         if current_position == 0 and (not buy_order) and current_price > buying_price:
             buy_limit_order = await post_alpaca_order(buying_price, 'buy')
+            sell_order = False
             if buy_limit_order:  # check some attribute of buy_order to see if it was successful
                 logger.info(
                     "Placed buy limit order at {0}".format(buying_price))
@@ -244,19 +231,22 @@ async def check_condition():
         # if we have a position, no open orders and the spread that can be captured is greater than fees, place a limit sell order at the selling price
         if current_position != 0 and (not sell_order) and current_price < selling_price:
             sell_limit_order = await post_alpaca_order(selling_price, 'sell')
+            buy_order = False
             if sell_limit_order:
                 logger.info(
                     "Placed sell limit order at {0}".format(selling_price))
 
         # Cutting losses
         # If we have do not have a position, an open buy order and the current price is above the selling price, cancel the buy limit order
-        if current_position == 0 and buy_order and current_price > selling_price:
+        logger.info(selling_price * (100 + cut_loss_threshold)/100)
+        if current_position == 0 and buy_order and current_price > selling_price * (100 + cut_loss_threshold)/100:
             trading_client.close_all_positions(cancel_orders=True)
             buy_order = False
             logger.info(
                 "Current price > Selling price. Closing Buy Limit Order, will place again in next check")
         # If we have do have a position and an open sell order and current price is below the buying price, cancel the sell limit order
-        if current_position != 0 and sell_order and current_price < buying_price:
+        logger.info(buying_price * (100 - cut_loss_threshold)/100)
+        if current_position != 0 and sell_order and current_price < buying_price * (100 - cut_loss_threshold)/100:
             trading_client.close_all_positions(cancel_orders=True)
             sell_order = False
             logger.info(

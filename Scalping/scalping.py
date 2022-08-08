@@ -31,6 +31,8 @@ notional_size = 20000
 spread = 0.00
 total_fees = 0
 buying_price, selling_price = 0.00, 0.00
+buy_order_price, sell_order_price = 0.00, 0.00
+
 buy_order, sell_order = None, None
 current_price = 0.00
 client_order_str = 'scalping'
@@ -61,6 +63,7 @@ async def main():
     logger.info("Closed all positions")
 
     while True:
+        logger.info('----------------------------------------------------')
         l1 = loop.create_task(get_crypto_bar_data(
             trading_pair))
         # Wait for the tasks to finish
@@ -163,29 +166,32 @@ def get_open_orders():
 
 
 # Post an Order to Alpaca
-async def post_alpaca_order(price, side):
+async def post_alpaca_order(buy_price, sell_price, side):
     '''
     Post an order to Alpaca
     '''
+    global buy_order_price, sell_order_price
     try:
         if side == 'buy':
             # print("Buying at: {0}".format(price))
             limit_order_data = LimitOrderRequest(
                 symbol="ETHUSD",
-                limit_price=price,
+                limit_price=buy_price,
                 notional=notional_size,
                 side=OrderSide.BUY,
                 time_in_force=TimeInForce.GTC)
             buy_limit_order = trading_client.submit_order(
                 order_data=limit_order_data
             )
+            buy_order_price = buy_price
+            sell_order_price = sell_price
             logger.info(
                 "Buy Limit Order placed for ETH/USD at : {0}".format(buy_limit_order.limit_price))
             return buy_limit_order
         else:
             limit_order_data = LimitOrderRequest(
                 symbol="ETHUSD",
-                limit_price=price,
+                limit_price=sell_price,
                 notional=notional_size,
                 side=OrderSide.SELL,
                 time_in_force=TimeInForce.FOK
@@ -193,6 +199,8 @@ async def post_alpaca_order(price, side):
             sell_limit_order = trading_client.submit_order(
                 order_data=limit_order_data
             )
+            sell_order_price = sell_price
+            buy_order_price = buy_price
             logger.info(
                 "Sell Limit Order placed for ETH/USD at : {0}".format(sell_limit_order.limit_price))
             return sell_limit_order
@@ -212,12 +220,14 @@ async def check_condition():
     - place buy limit order at the average of the lows and sell limit orders at the average of the highs
 
     '''
-    global buy_order, sell_order, current_position, current_price, buying_price, selling_price, spread, total_fees
+    global buy_order, sell_order, current_position, current_price, buying_price, selling_price, spread, total_fees, buy_order_price, sell_order_price
     num_open_orders = get_open_orders()
 
     logger.info("Current Position is: {0}".format(current_position))
-    logger.info(buy_order)
-    logger.info(sell_order)
+    logger.info("Buy Order status: {0}".format(buy_order))
+    logger.info("Sell Order status: {0}".format(sell_order))
+    logger.info("Buy_order_price: {0}".format(buy_order_price))
+    logger.info("Sell_order_price: {0}".format(sell_order_price))
     # If the spread is less than the fees, do not place an order
     if spread < total_fees:
         logger.info(
@@ -225,7 +235,7 @@ async def check_condition():
     else:
         # If we do not have a position, there are no open orders and spread is greater than the total fees, place a limit buy order at the buying price
         if current_position == 0 and (not buy_order) and current_price > buying_price:
-            buy_limit_order = await post_alpaca_order(buying_price, 'buy')
+            buy_limit_order = await post_alpaca_order(buying_price, selling_price, 'buy')
             sell_order = False
             if buy_limit_order:  # check some attribute of buy_order to see if it was successful
                 logger.info(
@@ -233,7 +243,7 @@ async def check_condition():
 
         # if we have a position, no open orders and the spread that can be captured is greater than fees, place a limit sell order at the selling price
         if current_position != 0 and (not sell_order) and current_price < selling_price:
-            sell_limit_order = await post_alpaca_order(selling_price, 'sell')
+            sell_limit_order = await post_alpaca_order(buying_price, selling_price, 'sell')
             buy_order = False
             if sell_limit_order:
                 logger.info(
@@ -241,15 +251,17 @@ async def check_condition():
 
         # Cutting losses
         # If we have do not have a position, an open buy order and the current price is above the selling price, cancel the buy limit order
-        logger.info(selling_price * (1 + cut_loss_threshold))
-        if current_position == 0 and buy_order and current_price > (selling_price * (1 + cut_loss_threshold)):
+        logger.info("Threshold price to cancel any buy limit order: {0}".format(
+                    sell_order_price * (1 + cut_loss_threshold)))
+        if current_position == 0 and buy_order and current_price > (sell_order_price * (1 + cut_loss_threshold)):
             trading_client.close_all_positions(cancel_orders=True)
             buy_order = False
             logger.info(
                 "Current price > Selling price. Closing Buy Limit Order, will place again in next check")
         # If we have do have a position and an open sell order and current price is below the buying price, cancel the sell limit order
-        logger.info(buying_price * (1 - cut_loss_threshold))
-        if current_position != 0 and sell_order and current_price < (buying_price * (1 - cut_loss_threshold)):
+        logger.info("Threshold price to cancel any sell limit order: {0}".format(
+                    buy_order_price * (1 - cut_loss_threshold)))
+        if current_position != 0 and sell_order and current_price < (buy_order_price * (1 - cut_loss_threshold)):
             trading_client.close_all_positions(cancel_orders=True)
             sell_order = False
             logger.info(

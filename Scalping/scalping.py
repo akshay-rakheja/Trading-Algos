@@ -44,7 +44,7 @@ waitTime = 60
 diff = 5
 
 # Current position of the trading pair on Alpaca
-current_position = 0
+current_position = 0.00
 
 # Threshold percentage to cut losses (0.5%)
 cut_loss_threshold = 0.005
@@ -93,7 +93,8 @@ async def get_crypto_bar_data(trading_pair):
     global buying_price, selling_price, current_position
     buying_price, selling_price = calc_order_prices(bars_df)
 
-    if len(get_positions()) > 0:
+    # To fix liquidation issue
+    if len(get_positions()) > 5.0:
         print(get_positions())
         current_position = get_positions()[0]['qty']
         buy_order = False
@@ -107,11 +108,9 @@ def calc_order_prices(bars_df):
     global spread, total_fees, current_price
     max_high = bars_df['high'].max()
     min_low = bars_df['low'].min()
-    mean_vwap = bars_df['vwap'].mean()
     current_price = bars_df['close'].iloc[-1]
 
     logger.info("Closing Price: {0}".format(current_price))
-    logger.info("Mean VWAP: {0}".format(mean_vwap))
     logger.info("Min Low: {0}".format(min_low))
     logger.info("Max High: {0}".format(max_high))
 
@@ -214,12 +213,14 @@ async def check_condition():
     Check the market conditions to see what limit orders to place
 
     Strategy:
-    - calculate moving average of closes, highs and lows of cbse for last 30 minutes
-    - place buy limit order at the average of the lows and sell limit orders at the average of the highs
+    - Only consider placing orders if the spread is greater than the total fees after fees are taken into account
+    - If the spread is greater than the total fees and we do not have a position, then place a buy order
+    - If the spread is greater than the total fees and we have a position, then place a sell order
+    - If we do not have a position, a buy order is in place and the current price is more than price we would have sold at, then close the buy limit order
+    - If we do have a position, a sell order is in place and the current price is less than price we would have bought at, then close the sell limit order
 
     '''
     global buy_order, sell_order, current_position, current_price, buying_price, selling_price, spread, total_fees, buy_order_price, sell_order_price
-    num_open_orders = get_open_orders()
 
     logger.info("Current Position is: {0}".format(current_position))
     logger.info("Buy Order status: {0}".format(buy_order))

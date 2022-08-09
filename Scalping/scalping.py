@@ -167,7 +167,7 @@ async def post_alpaca_order(buy_price, sell_price, side):
     '''
     Post an order to Alpaca
     '''
-    global buy_order_price, sell_order_price
+    global buy_order_price, sell_order_price, buy_order, sell_order
     try:
         if side == 'buy':
             # print("Buying at: {0}".format(price))
@@ -182,6 +182,7 @@ async def post_alpaca_order(buy_price, sell_price, side):
             )
             buy_order_price = buy_price
             sell_order_price = sell_price
+            # buy_order = True
             logger.info(
                 "Buy Limit Order placed for ETH/USD at : {0}".format(buy_limit_order.limit_price))
             return buy_limit_order
@@ -198,6 +199,7 @@ async def post_alpaca_order(buy_price, sell_price, side):
             )
             sell_order_price = sell_price
             buy_order_price = buy_price
+            # sell_order = True
             logger.info(
                 "Sell Limit Order placed for ETH/USD at : {0}".format(sell_limit_order.limit_price))
             return sell_limit_order
@@ -221,7 +223,7 @@ async def check_condition():
 
     '''
     global buy_order, sell_order, current_position, current_price, buying_price, selling_price, spread, total_fees, buy_order_price, sell_order_price
-
+    get_open_orders()
     logger.info("Current Position is: {0}".format(current_position))
     logger.info("Buy Order status: {0}".format(buy_order))
     logger.info("Sell Order status: {0}".format(sell_order))
@@ -240,8 +242,8 @@ async def check_condition():
                 logger.info(
                     "Placed buy limit order at {0}".format(buying_price))
 
-        # if we have a position, no open orders and the spread that can be captured is greater than fees, place a limit sell order at the selling price
-        if current_position != 0 and (not sell_order) and current_price < selling_price:
+        # if we have a position, no open orders and the spread that can be captured is greater than fees, place a limit sell order at the sell_order_price
+        if current_position != 0 and (not sell_order) and current_price < sell_order_price:
             sell_limit_order = await post_alpaca_order(buying_price, selling_price, 'sell')
             buy_order = False
             if sell_limit_order:

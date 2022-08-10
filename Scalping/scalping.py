@@ -93,10 +93,10 @@ async def get_crypto_bar_data(trading_pair):
     global buying_price, selling_price, current_position
     buying_price, selling_price = calc_order_prices(bars_df)
 
-    # To fix liquidation issue
-    if len(get_positions()) > 5.0:
-        print(get_positions())
-        current_position = get_positions()[0]['qty']
+    if len(get_positions()) > 0:
+
+        current_position = float(json.loads(get_positions()[0].json())['qty'])
+
         buy_order = False
     else:
         sell_order = False
@@ -235,7 +235,7 @@ async def check_condition():
             "Spread is less than total fees, Not a profitable opportunity to trade")
     else:
         # If we do not have a position, there are no open orders and spread is greater than the total fees, place a limit buy order at the buying price
-        if current_position == 0 and (not buy_order) and current_price > buying_price:
+        if current_position <= 0.01 and (not buy_order) and current_price > buying_price:
             buy_limit_order = await post_alpaca_order(buying_price, selling_price, 'buy')
             sell_order = False
             if buy_limit_order:  # check some attribute of buy_order to see if it was successful
@@ -243,7 +243,7 @@ async def check_condition():
                     "Placed buy limit order at {0}".format(buying_price))
 
         # if we have a position, no open orders and the spread that can be captured is greater than fees, place a limit sell order at the sell_order_price
-        if current_position != 0 and (not sell_order) and current_price < sell_order_price:
+        if current_position >= 0.01 and (not sell_order) and current_price < sell_order_price:
             sell_limit_order = await post_alpaca_order(buying_price, selling_price, 'sell')
             buy_order = False
             if sell_limit_order:
@@ -254,7 +254,7 @@ async def check_condition():
         # If we have do not have a position, an open buy order and the current price is above the selling price, cancel the buy limit order
         logger.info("Threshold price to cancel any buy limit order: {0}".format(
                     sell_order_price * (1 + cut_loss_threshold)))
-        if current_position == 0 and buy_order and current_price > (sell_order_price * (1 + cut_loss_threshold)):
+        if current_position <= 0.01 and buy_order and current_price > (sell_order_price * (1 + cut_loss_threshold)):
             trading_client.close_all_positions(cancel_orders=True)
             buy_order = False
             logger.info(
@@ -262,7 +262,7 @@ async def check_condition():
         # If we have do have a position and an open sell order and current price is below the buying price, cancel the sell limit order
         logger.info("Threshold price to cancel any sell limit order: {0}".format(
                     buy_order_price * (1 - cut_loss_threshold)))
-        if current_position != 0 and sell_order and current_price < (buy_order_price * (1 - cut_loss_threshold)):
+        if current_position >= 0.01 and sell_order and current_price < (buy_order_price * (1 - cut_loss_threshold)):
             trading_client.close_all_positions(cancel_orders=True)
             sell_order = False
             logger.info(

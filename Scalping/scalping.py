@@ -255,7 +255,7 @@ async def check_condition():
         logger.info("Threshold price to cancel any buy limit order: {0}".format(
                     sell_order_price * (1 + cut_loss_threshold)))
         if current_position <= 0.01 and buy_order and current_price > (sell_order_price * (1 + cut_loss_threshold)):
-            trading_client.close_all_positions(cancel_orders=True)
+            trading_client.cancel_orders()
             buy_order = False
             logger.info(
                 "Current price > Selling price. Closing Buy Limit Order, will place again in next check")
@@ -263,7 +263,7 @@ async def check_condition():
         logger.info("Threshold price to cancel any sell limit order: {0}".format(
                     buy_order_price * (1 - cut_loss_threshold)))
         if current_position >= 0.01 and sell_order and current_price < (buy_order_price * (1 - cut_loss_threshold)):
-            trading_client.close_all_positions(cancel_orders=True)
+            trading_client.cancel_orders()
             sell_order = False
             logger.info(
                 "Current price < buying price. Closing Sell Limit Order, will place again in next check")

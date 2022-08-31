@@ -36,6 +36,7 @@ data_client = CryptoHistoricalDataClient()
 
 # Trading variables
 trading_pair = 'ETH/USD'
+qty_to_trade = 5
 # Wait time between each bar request
 waitTime = 600
 data = 0
@@ -60,19 +61,8 @@ async def main():
         global predicted_price
         predicted_price = pred.predictModel()
         logger.info("Predicted Price is {0}".format(predicted_price))
-        print(get_positions())
-        # l1 = loop.create_task(check_condition())
-        # await asyncio.wait([l1])
-
-        # l1 = loop.create_task(get_crypto_bar_data(
-        # trading_pair))
-        # Wait for the tasks to finish
-        # await asyncio.wait([l1])
-        # global data
-        # x_train, y_train, x_test, y_test = scale_data(data)
-        # Check if any trading condition is met
-        # await check_condition()
-        # Wait for the a certain amount of time between each bar request
+        l1 = loop.create_task(check_condition())
+        await asyncio.wait([l1])
         await asyncio.sleep(waitTime)
 
 
@@ -158,7 +148,6 @@ class stockPred:
         self.retrain_freq = retrain_freq
 
     def getAllData(self):
-        logger.info("Getting Data")
         # Alpaca Trading Client
         trading_client = TradingClient(
             config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY, paper=True)
@@ -179,21 +168,16 @@ class stockPred:
         df = data_client.get_crypto_bars(request_params).df
         global current_price
         current_price = df.iloc[-1]['close']
-        logger.info("Current Price is {0}".format(current_price))
-        # print(df['close'][-1])
         return df
 
     def getFeature(self):
         df = self.getAllData()
-        # df = df[df.exchange == self.exchange]
-        logger.info("Getting feature data")
         data = df.filter([self.feature])
         data = data.values
         return data
 
     def scaleData(self):
         data = self.getFeature()
-        logger.info("Scaling data")
         scaler = MinMaxScaler(feature_range=(-1, 1))
         scaled_data = scaler.fit_transform(data)
         return scaled_data, scaler
@@ -201,7 +185,6 @@ class stockPred:
     # train on all data for which labels are available (train + test from dev)
     def getTrainData(self):
         scaled_data = self.scaleData()[0]
-        logger.info("Getting training data")
         x, y = [], []
         for price in range(self.look_back, len(scaled_data)):
             x.append(scaled_data[price - self.look_back:price, :])
@@ -230,7 +213,7 @@ class stockPred:
         x_train = x[: len(x) - 1]
         y_train = y[: len(x) - 1]
         model = self.LSTM_model(x_train)
-        logger.info("Training model")
+        logger.info("-----Training model-----")
         modelfit = model.fit(x_train, y_train, epochs=self.epochs,
                              batch_size=self.batch_size, verbose=1, shuffle=True)
         return model, modelfit
@@ -246,7 +229,7 @@ class stockPred:
         pred = np.array([float(pred)])
         pred = np.reshape(pred, (pred.shape[0], 1))
 
-        logger.info("Predicting Value")
+        logger.info("-----Predicting Price-----")
         pred_true = scaler.inverse_transform(pred)
         return pred_true[0][0]
 
@@ -259,20 +242,21 @@ async def check_condition():
     '''
     global current_position, current_price, predicted_price
     current_position = get_positions()
+    logger.info("Current Price is: {0}".format(current_price))
     logger.info("Current Position is: {0}".format(current_position))
     # If we do not have a position and current price is less than the predicted price place a market buy order
-    if current_position <= 0.01 and current_price < predicted_price:
+    if float(current_position) <= 0.01 and current_price < predicted_price:
+        logger.info("Placing Buy Order")
         buy_order = await post_alpaca_order('buy')
         if buy_order:  # check some attribute of buy_order to see if it was successful
-            logger.info(
-                "Placed buy limit order at {0}".format(buy_order))
+            logger.info("Buy Order Placed")
 
     # If we do have a position and current price is greater than the predicted price place a market sell order
     if current_position >= 0.01 and current_price > predicted_price:
+        logger.info("Placing Sell Order")
         sell_order = await post_alpaca_order('sell')
         if sell_order:
-            logger.info(
-                "Placed sell limit order at {0}".format(sell_order))
+            logger.info("Sell Order Placed")
 
 
 async def post_alpaca_order(side):
@@ -283,7 +267,7 @@ async def post_alpaca_order(side):
         if side == 'buy':
             market_order_data = MarketOrderRequest(
                 symbol="ETHUSD",
-                qty=0.1,
+                qty=qty_to_trade,
                 side=OrderSide.BUY,
                 time_in_force=TimeInForce.GTC
             )
@@ -294,7 +278,7 @@ async def post_alpaca_order(side):
         else:
             market_order_data = MarketOrderRequest(
                 symbol="ETHUSD",
-                qty=0.1,
+                qty=qty_to_trade,
                 side=OrderSide.SELL,
                 time_in_force=TimeInForce.GTC
             )
@@ -310,8 +294,12 @@ async def post_alpaca_order(side):
 
 def get_positions():
     positions = trading_client.get_all_positions()
+    # print(positions[0])
     global current_position
-    current_position = positions[0].qty
+    for p in positions:
+        if p.symbol == 'ETHUSD':
+            current_position = p.qty
+            return current_position
     return current_position
 
 

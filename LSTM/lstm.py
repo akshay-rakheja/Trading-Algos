@@ -252,7 +252,7 @@ async def check_condition():
             logger.info("Buy Order Placed")
 
     # If we do have a position and current price is greater than the predicted price place a market sell order
-    if current_position >= 0.01 and current_price > predicted_price:
+    if float(current_position) >= 0.01 and current_price > predicted_price:
         logger.info("Placing Sell Order")
         sell_order = await post_alpaca_order('sell')
         if sell_order:

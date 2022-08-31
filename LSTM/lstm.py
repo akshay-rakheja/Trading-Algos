@@ -41,6 +41,7 @@ waitTime = 600
 data = 0
 
 current_position, current_price = 0, 0
+predicted_price = 0
 
 
 async def main():
@@ -56,9 +57,13 @@ async def main():
         logger.info('----------------------------------------------------')
 
         pred = stockPred()
+        global predicted_price
+        predicted_price = pred.predictModel()
+        logger.info("Predicted Price is {0}".format(predicted_price))
+        print(get_positions())
+        # l1 = loop.create_task(check_condition())
+        # await asyncio.wait([l1])
 
-        val = pred.predictModel()
-        print(val)
         # l1 = loop.create_task(get_crypto_bar_data(
         # trading_pair))
         # Wait for the tasks to finish
@@ -117,7 +122,7 @@ def line_plot(line1, line2, label1=None, label2=None, title='', lw=2):
 class stockPred:
     def __init__(self,
                  past_days: int = 50,
-                 trading_pair: str = 'BTCUSD',
+                 trading_pair: str = 'ETHUSD',
                  exchange: str = 'FTXU',
                  feature: str = 'close',
 
@@ -163,7 +168,7 @@ class stockPred:
 
         time_diff = datetime.now() - relativedelta(hours=1000)
         logger.info("Getting crypto bar data for {0} from {1}".format(
-            trading_pair, time_diff))
+            self.trading_pair, time_diff))
         # Defining Bar data request parameters
         request_params = CryptoBarsRequest(
             symbol_or_symbols=[trading_pair],
@@ -172,12 +177,10 @@ class stockPred:
         )
         # Get the bar data from Alpaca
         df = data_client.get_crypto_bars(request_params).df
-
-        # bars_df = bars_df.reset_index()
-        # bars_df.set_index('timestamp', inplace=True)
-
-        # df = data_client.get_crypto_bars(self.trading_pair, TimeFrame.Hour,
-        #  start=date.today() - self.history, end=date.today()).df
+        global current_price
+        current_price = df.iloc[-1]['close']
+        logger.info("Current Price is {0}".format(current_price))
+        # print(df['close'][-1])
         return df
 
     def getFeature(self):
@@ -245,7 +248,7 @@ class stockPred:
 
         logger.info("Predicting Value")
         pred_true = scaler.inverse_transform(pred)
-        return pred_true
+        return pred_true[0][0]
 
 
 async def check_condition():
@@ -253,58 +256,63 @@ async def check_condition():
     Strategy:
     - If the predicted price an hour from now is above the current price and we do not have a position, buy
     - If the predicted price an hour from now is below the current price and we do have a position, sell
-
     '''
-    global current_position, current_price
+    global current_position, current_price, predicted_price
+    current_position = get_positions()
     logger.info("Current Position is: {0}".format(current_position))
-    logger.info("Buy Order status: {0}".format(buy_order))
-    logger.info("Sell Order status: {0}".format(sell_order))
-    logger.info("Buy_order_price: {0}".format(buy_order_price))
-    logger.info("Sell_order_price: {0}".format(sell_order_price))
-    # If the spread is less than the fees, do not place an order
-    if spread < total_fees:
-        logger.info(
-            "Spread is less than total fees, Not a profitable opportunity to trade")
-    else:
-        # If we do not have a position, there are no open orders and spread is greater than the total fees, place a limit buy order at the buying price
-        if current_position <= 0.01 and (not buy_order) and current_price > buying_price:
-            buy_limit_order = await post_alpaca_order(buying_price, selling_price, 'buy')
-            sell_order = False
-            if buy_limit_order:  # check some attribute of buy_order to see if it was successful
-                logger.info(
-                    "Placed buy limit order at {0}".format(buying_price))
-
-        # if we have a position, no open orders and the spread that can be captured is greater than fees, place a limit sell order at the sell_order_price
-        if current_position >= 0.01 and (not sell_order) and current_price < sell_order_price:
-            sell_limit_order = await post_alpaca_order(buying_price, selling_price, 'sell')
-            buy_order = False
-            if sell_limit_order:
-                logger.info(
-                    "Placed sell limit order at {0}".format(selling_price))
-
-        # Cutting losses
-        # If we have do not have a position, an open buy order and the current price is above the selling price, cancel the buy limit order
-        logger.info("Threshold price to cancel any buy limit order: {0}".format(
-                    sell_order_price * (1 + cut_loss_threshold)))
-        if current_position <= 0.01 and buy_order and current_price > (sell_order_price * (1 + cut_loss_threshold)):
-            trading_client.cancel_orders()
-            buy_order = False
+    # If we do not have a position and current price is less than the predicted price place a market buy order
+    if current_position <= 0.01 and current_price < predicted_price:
+        buy_order = await post_alpaca_order('buy')
+        if buy_order:  # check some attribute of buy_order to see if it was successful
             logger.info(
-                "Current price > Selling price. Closing Buy Limit Order, will place again in next check")
-        # If we have do have a position and an open sell order and current price is below the buying price, cancel the sell limit order
-        logger.info("Threshold price to cancel any sell limit order: {0}".format(
-                    buy_order_price * (1 - cut_loss_threshold)))
-        if current_position >= 0.01 and sell_order and current_price < (buy_order_price * (1 - cut_loss_threshold)):
-            trading_client.cancel_orders()
-            sell_order = False
+                "Placed buy limit order at {0}".format(buy_order))
+
+    # If we do have a position and current price is greater than the predicted price place a market sell order
+    if current_position >= 0.01 and current_price > predicted_price:
+        sell_order = await post_alpaca_order('sell')
+        if sell_order:
             logger.info(
-                "Current price < buying price. Closing Sell Limit Order, will place again in next check")
+                "Placed sell limit order at {0}".format(sell_order))
+
+
+async def post_alpaca_order(side):
+    '''
+    Post an order to Alpaca
+    '''
+    try:
+        if side == 'buy':
+            market_order_data = MarketOrderRequest(
+                symbol="ETHUSD",
+                qty=0.1,
+                side=OrderSide.BUY,
+                time_in_force=TimeInForce.GTC
+            )
+            buy_order = trading_client.submit_order(
+                order_data=market_order_data
+            )
+            return buy_order
+        else:
+            market_order_data = MarketOrderRequest(
+                symbol="ETHUSD",
+                qty=0.1,
+                side=OrderSide.SELL,
+                time_in_force=TimeInForce.GTC
+            )
+            sell_order = trading_client.submit_order(
+                order_data=market_order_data
+            )
+            return sell_order
+    except Exception as e:
+        logger.exception(
+            "There was an issue posting order to Alpaca: {0}".format(e))
+        return False
 
 
 def get_positions():
     positions = trading_client.get_all_positions()
-
-    return positions
+    global current_position
+    current_position = positions[0].qty
+    return current_position
 
 
 loop = asyncio.get_event_loop()

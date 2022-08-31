@@ -1,10 +1,9 @@
 from alpaca.data.historical import CryptoHistoricalDataClient
-from alpaca.data.requests import CryptoBarsRequest, CryptoQuotesRequest, CryptoTradesRequest
-from alpaca.trading.requests import GetOrdersRequest
+from alpaca.data.requests import CryptoBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest
-from alpaca.trading.enums import OrderSide, TimeInForce, OrderStatus
+from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from tensorflow.keras.models import Sequential
@@ -278,7 +277,7 @@ async def post_alpaca_order(side):
         else:
             market_order_data = MarketOrderRequest(
                 symbol="ETHUSD",
-                qty=qty_to_trade,
+                qty=current_position,
                 side=OrderSide.SELL,
                 time_in_force=TimeInForce.GTC
             )

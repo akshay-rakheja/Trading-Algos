@@ -2,6 +2,6 @@
 
 This repo conatins the following trading strategies to trade on [Alpaca](https://alpaca.markets/):
 
-1. Trading BTCUSD on Alpaca with Bollinger Bands and RSI
-2. Scalping
-3. LSTM based trading
+1. Bollinger Bands and RSI on BTCUSD
+2. Scalping ETHUSD 
+3. LSTM based trading on ETHUSD

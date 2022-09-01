@@ -124,12 +124,8 @@ class stockPred:
                  optimizer: str = 'adam',
                  epochs: int = 20,
                  batch_size: int = 32,
-                 output_size: int = 1,
-
-                 retrain_freq: int = 24  # once a day
+                 output_size: int = 1
                  ):
-        # self.history = datetime.timedelta(days=past_days)
-        self.trading_pair = trading_pair
         self.exchange = exchange
         self.feature = feature
 
@@ -144,12 +140,7 @@ class stockPred:
         self.batch_size = batch_size
         self.output_size = output_size
 
-        self.retrain_freq = retrain_freq
-
     def getAllData(self):
-        # Alpaca Trading Client
-        trading_client = TradingClient(
-            config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY, paper=True)
 
         # Alpaca Market Data Client
         data_client = CryptoHistoricalDataClient()

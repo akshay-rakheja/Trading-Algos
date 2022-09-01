@@ -259,7 +259,8 @@ async def post_alpaca_order(side):
                 symbol="ETHUSD",
                 qty=qty_to_trade,
                 side=OrderSide.BUY,
-                time_in_force=TimeInForce.GTC
+                time_in_force=TimeInForce.GTC,
+                client_order_id="lstm_bot"
             )
             buy_order = trading_client.submit_order(
                 order_data=market_order_data
@@ -270,7 +271,8 @@ async def post_alpaca_order(side):
                 symbol="ETHUSD",
                 qty=current_position,
                 side=OrderSide.SELL,
-                time_in_force=TimeInForce.GTC
+                time_in_force=TimeInForce.GTC,
+                client_order_id="lstm_bot"
             )
             sell_order = trading_client.submit_order(
                 order_data=market_order_data

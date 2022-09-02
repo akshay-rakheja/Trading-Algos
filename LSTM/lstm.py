@@ -29,13 +29,11 @@ logger = logging.getLogger(__name__)
 trading_client = TradingClient(
     config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY, paper=True)
 
-# Alpaca Market Data Client
-data_client = CryptoHistoricalDataClient()
 
 # Trading variables
 trading_pair = 'ETH/USD'
 qty_to_trade = 5
-# Wait time between each bar request
+# Wait time between each bar request and training model
 waitTime = 600
 data = 0
 
@@ -47,10 +45,6 @@ async def main():
     '''
     Main function to get latest asset data and check possible trade conditions
     '''
-
-    # closes all position AND also cancels all open orders
-    # trading_client.close_all_positions(cancel_orders=True)
-    # logger.info("Closed all positions")
 
     while True:
         logger.info('----------------------------------------------------')
@@ -64,49 +58,6 @@ async def main():
         await asyncio.sleep(waitTime)
 
 
-async def get_crypto_bar_data(trading_pair):
-    '''
-    Get Crypto Bar Data from Alpaca for the last 1000 hours
-    '''
-    time_diff = datetime.now() - relativedelta(hours=1000)
-    logger.info("Getting crypto bar data for {0} from {1}".format(
-        trading_pair, time_diff))
-    # Defining Bar data request parameters
-    request_params = CryptoBarsRequest(
-        symbol_or_symbols=[trading_pair],
-        timeframe=TimeFrame.Hour,
-        start=time_diff
-    )
-    # Get the bar data from Alpaca
-    bars_df = data_client.get_crypto_bars(request_params).df
-
-    bars_df = bars_df.reset_index()
-    bars_df.set_index('timestamp', inplace=True)
-    global data
-    aim = 'close'
-    data = bars_df.filter([aim])
-    print(data)
-    train_data = data.iloc[:800]
-    test_data = data.iloc[800:]
-
-    print(train_data)
-    print(test_data)
-    line_plot(train_data[aim], test_data[aim],
-              'training', 'test', title='')
-
-    return bars_df
-
-
-def line_plot(line1, line2, label1=None, label2=None, title='', lw=2):
-    fig, ax = plt.subplots(1, figsize=(13, 7))
-    ax.plot(line1, label=label1, linewidth=lw)
-    ax.plot(line2, label=label2, linewidth=lw)
-    ax.set_ylabel('ETHUSD', fontsize=14)
-    ax.set_title(title, fontsize=16)
-    ax.legend(loc='best', fontsize=16)
-    plt.savefig('line_plot.png')
-
-
 class stockPred:
     def __init__(self,
                  past_days: int = 50,
@@ -114,7 +65,7 @@ class stockPred:
                  exchange: str = 'FTXU',
                  feature: str = 'close',
 
-                 look_back: int = 500,
+                 look_back: int = 100,
 
                  neurons: int = 50,
                  activ_func: str = 'linear',
@@ -175,7 +126,6 @@ class stockPred:
         for price in range(self.look_back, len(scaled_data)):
             x.append(scaled_data[price - self.look_back:price, :])
             y.append(scaled_data[price, :])
-
         return np.array(x), np.array(y)
 
     def LSTM_model(self, input_data):
@@ -253,7 +203,7 @@ async def check_condition():
     if float(current_position) <= 0.01 and current_price < predicted_price:
         logger.info("Placing Buy Order")
         buy_order = await post_alpaca_order('buy')
-        if buy_order:  # check some attribute of buy_order to see if it was successful
+        if buy_order:
             logger.info("Buy Order Placed")
 
     # If we do have a position and current price is greater than the predicted price place a market sell order

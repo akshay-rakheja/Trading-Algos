@@ -160,20 +160,17 @@ class stockPred:
         return df
 
     def getFeature(self, df):
-        # df = self.getAllData()
         data = df.filter([self.feature])
         data = data.values
         return data
 
     def scaleData(self, data):
-        # data = self.getFeature()
         scaler = MinMaxScaler(feature_range=(-1, 1))
         scaled_data = scaler.fit_transform(data)
         return scaled_data, scaler
 
     # train on all data for which labels are available (train + test from dev)
     def getTrainData(self, scaled_data):
-        # scaled_data = self.scaleData()[0]
         x, y = [], []
         for price in range(self.look_back, len(scaled_data)):
             x.append(scaled_data[price - self.look_back:price, :])
@@ -198,11 +195,9 @@ class stockPred:
 
     def trainModel(self, x, y):
 
-        # x, y = self.getTrainData()
         x_train = x[: len(x) - 1]
         y_train = y[: len(x) - 1]
         model = self.LSTM_model(x_train)
-        logger.info("-----Training model-----")
         modelfit = model.fit(x_train, y_train, epochs=self.epochs,
                              batch_size=self.batch_size, verbose=1, shuffle=True)
         return model, modelfit

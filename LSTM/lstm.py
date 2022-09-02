@@ -9,7 +9,6 @@ from dateutil.relativedelta import relativedelta
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Activation, Dense, Dropout, LSTM
 from sklearn.preprocessing import MinMaxScaler
-import tensorflow as tf
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -115,7 +114,7 @@ class stockPred:
                  exchange: str = 'FTXU',
                  feature: str = 'close',
 
-                 look_back: int = 72,
+                 look_back: int = 500,
 
                  neurons: int = 50,
                  activ_func: str = 'linear',
@@ -146,8 +145,8 @@ class stockPred:
         data_client = CryptoHistoricalDataClient()
 
         time_diff = datetime.now() - relativedelta(hours=1000)
-        logger.info("Getting crypto bar data for {0} from {1}".format(
-            self.trading_pair, time_diff))
+        logger.info("Getting bar data for {0} starting from {1}".format(
+            trading_pair, time_diff))
         # Defining Bar data request parameters
         request_params = CryptoBarsRequest(
             symbol_or_symbols=[trading_pair],
@@ -160,21 +159,21 @@ class stockPred:
         current_price = df.iloc[-1]['close']
         return df
 
-    def getFeature(self):
-        df = self.getAllData()
+    def getFeature(self, df):
+        # df = self.getAllData()
         data = df.filter([self.feature])
         data = data.values
         return data
 
-    def scaleData(self):
-        data = self.getFeature()
+    def scaleData(self, data):
+        # data = self.getFeature()
         scaler = MinMaxScaler(feature_range=(-1, 1))
         scaled_data = scaler.fit_transform(data)
         return scaled_data, scaler
 
     # train on all data for which labels are available (train + test from dev)
-    def getTrainData(self):
-        scaled_data = self.scaleData()[0]
+    def getTrainData(self, scaled_data):
+        # scaled_data = self.scaleData()[0]
         x, y = [], []
         for price in range(self.look_back, len(scaled_data)):
             x.append(scaled_data[price - self.look_back:price, :])
@@ -197,9 +196,9 @@ class stockPred:
         model.compile(loss=self.loss, optimizer=self.optimizer)
         return model
 
-    def trainModel(self):
+    def trainModel(self, x, y):
 
-        x, y = self.getTrainData()
+        # x, y = self.getTrainData()
         x_train = x[: len(x) - 1]
         y_train = y[: len(x) - 1]
         model = self.LSTM_model(x_train)
@@ -209,17 +208,38 @@ class stockPred:
         return model, modelfit
 
     def predictModel(self):
+        logger.info("Getting Ethereum Bar Data")
+        # get all data
+        df = self.getAllData()
 
-        scaled_data, scaler = self.scaleData()
+        logger.info("Getting Feature: {}".format(self.feature))
+        # get feature (closing price)
+        data = self.getFeature(df)
+
+        logger.info("Scaling Data")
+        # scale data and get scaler
+        scaled_data, scaler = self.scaleData(data)
+
+        logger.info("Getting Train Data")
+        # get train data
+        x_train, y_train = self.getTrainData(scaled_data)
+
+        logger.info("Training Model")
+        # Creates and returns a trained model
+        model = self.trainModel(x_train, y_train)[0]
+
+        logger.info("Extracting data to predict on")
+        # Extract the Closing prices that need to be fed into predict the result
         x_pred = scaled_data[-self.look_back:]
         x_pred = np.reshape(x_pred, (1, x_pred.shape[0]))
 
-        model = self.trainModel()[0]
+        # Predict the result
+        logger.info("Predicting Price")
         pred = model.predict(x_pred).squeeze()
         pred = np.array([float(pred)])
         pred = np.reshape(pred, (pred.shape[0], 1))
 
-        logger.info("-----Predicting Price-----")
+        # Inverse the scaling to get the actual price
         pred_true = scaler.inverse_transform(pred)
         return pred_true[0][0]
 
@@ -259,8 +279,7 @@ async def post_alpaca_order(side):
                 symbol="ETHUSD",
                 qty=qty_to_trade,
                 side=OrderSide.BUY,
-                time_in_force=TimeInForce.GTC,
-                client_order_id="lstm_bot"
+                time_in_force=TimeInForce.GTC
             )
             buy_order = trading_client.submit_order(
                 order_data=market_order_data
@@ -271,8 +290,7 @@ async def post_alpaca_order(side):
                 symbol="ETHUSD",
                 qty=current_position,
                 side=OrderSide.SELL,
-                time_in_force=TimeInForce.GTC,
-                client_order_id="lstm_bot"
+                time_in_force=TimeInForce.GTC
             )
             sell_order = trading_client.submit_order(
                 order_data=market_order_data

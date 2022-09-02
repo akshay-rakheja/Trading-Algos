@@ -92,8 +92,8 @@ async def main():
 
 Let’s talk about what our main function does. It runs a never ending loop that predicts the price of our asset ETH/USD at a later point in time and makes trading decisions based on the predicted price, current price of the asset and position of the asset in our account.
 
-We start by creating an instance of class stockPred and call it pred. We then call the predictModel() method that returns the predicted price of ETH/USD at a later point in time.
-Once we have the predicted price,we call the function check_condition() that computes if a trade should be made. After waiting for a waitTime amount of seconds this process repeats again. We  have set the waitTime to 3600 seconds to wait for 1hr before we check for a trade again. This can be changed based on the timeframe of data you are looking at. Since we are considering an hourly timeframe and predicting the closing price of ETH/USD one hour into the future, it is reasonable to keep it at 3600 seconds.
+We start by creating an instance of class stockPred and call it pred. We then call the `predictModel()` method that returns the predicted price of `ETH/USD` at a later point in time.
+Once we have the predicted price,we call the function `check_condition()` that computes if a trade should be made. After waiting for a waitTime amount of seconds this process repeats again. We  have set the waitTime to 3600 seconds to wait for 1hr before we check for a trade again. This can be changed based on the timeframe of data you are looking at. Since we are considering an hourly timeframe and predicting the closing price of ETH/USD one hour into the future, it is reasonable to keep it at 3600 seconds.
 
 Next, let’s explore the class stockPred. While building this prediction class, I took inspiration from work found here.4 It was of great help in creating this model and defining the necessary parameters. It has a few functions so we will look at them in snippets.
 
@@ -127,7 +127,7 @@ class stockPred:
     self.output_size = output_size
 ```
 
-The __init__() method initializes the variables needed to filter our market data and train the LSTM model. These include parameters like lookback period (period to consider in the past to make a future prediction), number of neurons/nodes that will be part of each layer of our LSTM mode, loss function, activation function, number of epochs to train our model for, optimizer, batch size and the output size.
+The `__init__()` method initializes the variables needed to filter our market data and train the LSTM model. These include parameters like lookback period (period to consider in the past to make a future prediction), number of neurons/nodes that will be part of each layer of our LSTM mode, loss function, activation function, number of epochs to train our model for, optimizer, batch size and the output size.
 
 ```python
 def getAllData(self):
@@ -153,7 +153,7 @@ def getFeature(self, df):
     data = data.values
     return data
 ```
-`getAllData()` method helps us get the raw market data that we need to train the model. First, it instantiates a data client using Alpaca-py. Then we create a `CryptoBarRequest()` and pass in the necessary parameters like symbol, timeframe of the data we would like and the start time of the data. Since we are trading ETH/USD, the symbol parameter is ETHUSD for the market data request. We are also requesting the data to be in hourly time frame and start 1000 hours before the current time. Keep in mind that the current time in your time zone might result in a different number of rows.  
+`getAllData()` method helps us get the raw market data that we need to train the model. First, it instantiates a data client using Alpaca-py. Then we create a `CryptoBarRequest()` and pass in the necessary parameters like symbol, timeframe of the data we would like and the start time of the data. Since we are trading ETH/USD, the symbol parameter is `ETHUSD` for the market data request. We are also requesting the data to be in hourly time frame and start 1000 hours before the current time. Keep in mind that the current time in your time zone might result in a different number of rows.  
 These parameters can be optimized further for better performance. Passing in the request we just created to the `get_crypto_bars()` method returns the needed bar data. Now that we have the necessary bar data, we set the current price of the asset to be the last closing price in the bar data and finally return the bar data of the asset.
 
 `getFeature()` method extracts the price column we are looking to predict. Since we are looking to predict the closing price of Ethereum, we filter only the ‘close’ column of the bar data and return it.

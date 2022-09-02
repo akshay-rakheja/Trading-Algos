@@ -1,19 +1,21 @@
 ## What is Machine Learning?
 
-Machine learning is a branch of Artificial Intelligence (AI) and computer science which focuses on the use of data and algorithms to imitate the way that humans learn, gradually improving its accuracy1. Machine learning empowers traders to accelerate and automate one of the most complex, time-consuming, and challenging aspects of algorithmic trading, providing a competitive advantage beyond rules-based trading. 2
+Machine learning is a branch of Artificial Intelligence (AI) and computer science which focuses on the use of data and algorithms to imitate the way that humans learn, gradually improving its accuracy. Machine learning empowers traders to accelerate and automate one of the most complex, time-consuming, and challenging aspects of algorithmic trading, providing a competitive advantage beyond rules-based trading.
 There are several kinds of machine learning algorithms that exist today for a range of use cases. We will be focusing on Long Short-Term Memory (LSTM).
 
 ## What is LSTM?
 
-LSTM is a special kind of recurrent neural network capable of handling long-term dependencies. These networks are capable of learning order dependence in sequence prediction problems.3 Financial time series prediction is one such problem where we can use LSTM to predict future prices of an asset. If you would like to understand how the network works, I have found this to be a great resource in understanding LSTM networks.
-What are we building?
+LSTM is a special kind of recurrent neural network capable of handling long-term dependencies. These networks are capable of learning order dependence in sequence prediction problems. Financial time series prediction is one such problem where we can use LSTM to predict future prices of an asset. If you would like to understand how the network works, I have found [this](https://colah.github.io/posts/2015-08-Understanding-LSTMs/) article to be a great resource in understanding LSTM networks.
+
+## What are we building?
+
 We are building a trading bot that uses a LSTM model to predict the closing price of ETH/USD on Alpaca. We will use market data from Alpaca to train our model and use the predicted value from the trained model to make necessary trading decisions. We can consider two scenarios to start off:
 If we do not have a position and the current price of the asset is less than the predicted price of the asset at some time in the future. In this scenario, we place a BUY market order for a fixed quantity of the asset.
 If we do have a position and the current price of the asset is more than the predicted price of the asset at some time in the future. In this scenario we place a SELL market order for a fixed quantity of the asset.
 
 ## Let’s Build
 
-Before getting started, you will need to create an Alpaca account to use paper trading as well as fetch market data for ETH/USD. You can get one by signing up here. Also, code for this trading bot can be found here. Now, let’s get started!
+Before getting started, you will need to create an Alpaca account to use paper trading as well as fetch market data for ETH/USD. You can get one by signing up [here](https://alpaca.markets/). Also, code for this trading bot can be found [here](https://github.com/akshay-rakheja/Trading-Algos/blob/master/LSTM/lstm.py). Now, let’s get started!
 
 ```python
 from alpaca.data.historical import CryptoHistoricalDataClient
@@ -48,7 +50,7 @@ trading_client = TradingClient(
    config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY, paper=True)
 ```
 
-We start by importing the necessary libraries including Alpaca-py, Tensorflow and Sci-kit Learn (Sklearn). Alpaca-py is the latest official python SDK from Alpaca. It provides us with the necessary market data and trading endpoints. We enable logging to monitor the latest prices and bot status.
+We start by importing the necessary libraries including [Alpaca-py](https://alpaca.markets/docs/python-sdk/index.html), Tensorflow and Sci-kit Learn (Sklearn). Alpaca-py is the latest official python SDK from Alpaca. It provides us with the necessary market data and trading endpoints. We enable logging to monitor the latest prices and bot status.
 Also, we define our trading client using Alpaca-py. It is currently set to using a paper environment. This can be easily set to use a live trading environment by setting the paper parameter as False.
 
 ```python
@@ -95,7 +97,7 @@ Let’s talk about what our main function does. It runs a never ending loop that
 We start by creating an instance of class stockPred and call it pred. We then call the `predictModel()` method that returns the predicted price of `ETH/USD` at a later point in time.
 Once we have the predicted price,we call the function `check_condition()` that computes if a trade should be made. After waiting for a waitTime amount of seconds this process repeats again. We  have set the waitTime to 3600 seconds to wait for 1hr before we check for a trade again. This can be changed based on the timeframe of data you are looking at. Since we are considering an hourly timeframe and predicting the closing price of ETH/USD one hour into the future, it is reasonable to keep it at 3600 seconds.
 
-Next, let’s explore the class stockPred. While building this prediction class, I took inspiration from work found here.4 It was of great help in creating this model and defining the necessary parameters. It has a few functions so we will look at them in snippets.
+Next, let’s explore the class stockPred. While building this prediction class, I took inspiration from work found [here](https://github.com/akshitasingh0706/MyMLProjects/tree/main/StockPredictions). It was of great help in creating this model and defining the necessary parameters. It has a few functions so we will look at them in snippets.
 
 ```python
 class stockPred:
@@ -153,7 +155,7 @@ def getFeature(self, df):
     data = data.values
     return data
 ```
-`getAllData()` method helps us get the raw market data that we need to train the model. First, it instantiates a data client using Alpaca-py. Then we create a `CryptoBarRequest()` and pass in the necessary parameters like symbol, timeframe of the data we would like and the start time of the data. Since we are trading ETH/USD, the symbol parameter is `ETHUSD` for the market data request. We are also requesting the data to be in hourly time frame and start 1000 hours before the current time. Keep in mind that the current time in your time zone might result in a different number of rows.  
+`getAllData()` method helps us get the raw market data that we need to train the model. First, it instantiates a data client using [Alpaca-py](https://alpaca.markets/docs/python-sdk/). Then we create a `CryptoBarRequest()` and pass in the necessary parameters like symbol, timeframe of the data we would like and the start time of the data. Since we are trading ETH/USD, the symbol parameter is `ETHUSD` for the market data request. We are also requesting the data to be in hourly time frame and start 1000 hours before the current time. Keep in mind that the current time in your time zone might result in a different number of rows.  
 These parameters can be optimized further for better performance. Passing in the request we just created to the `get_crypto_bars()` method returns the needed bar data. Now that we have the necessary bar data, we set the current price of the asset to be the last closing price in the bar data and finally return the bar data of the asset.
 
 `getFeature()` method extracts the price column we are looking to predict. Since we are looking to predict the closing price of Ethereum, we filter only the ‘close’ column of the bar data and return it.
@@ -195,7 +197,7 @@ def LSTM_model(self, input_data):
     return model
 ```
 
-The code snippet above creates our LSTM model. It starts by instantiating a Sequential model and followed by adding LSTM layers on it. We need to specify the number of neurons in each LSTM layer. In this example, we are using 50 neurons for each LSTM layer. A LSTM layer is usually followed by a Dropout layer. The Dropout layer randomly sets input units to 0 with a frequency of rate at each step during training time, which helps prevent overfitting.5
+The code snippet above creates our LSTM model. It starts by instantiating a Sequential model and followed by adding LSTM layers on it. We need to specify the number of neurons in each LSTM layer. In this example, we are using 50 neurons for each LSTM layer. A LSTM layer is usually followed by a Dropout layer. The Dropout layer randomly sets input units to 0 with a frequency of rate at each step during training time, which helps prevent overfitting.
 In total 3 LSTM layers are added followed by a Dropout layer each. This is followed by adding a final Dense layer and then passing the result through an activation function. We are using a linear activation function here. Now that the model is created, we can configure the model with the loss function and optimizer we would like to use. We are using the Mean Squared Error loss function and Adam optimizer in our example.
 
 ```python
@@ -208,7 +210,7 @@ def trainModel(self, x, y):
        return model, modelfit
 ```
 
-`trainModel()` uses the x and y arrays from getTrainData() method to feed the training data to our LSTM model we created in the previous snippet and then trains it. The necessary training data `x_train` and `y_train` are extracted from the arrays that are fed in. Calling `model.fit()` method trains our model on the training data we just prepared. Along with the training data, we pass it the number of epochs we need our model to train and the batch size of the data being fed. Epoch defines the number of times we go through training while batch size defines the number of samples processed before the model is updated. The size of a batch must be more than or equal to one and less than or equal to the number of samples in the training dataset.6
+`trainModel()` uses the x and y arrays from getTrainData() method to feed the training data to our LSTM model we created in the previous snippet and then trains it. The necessary training data `x_train` and `y_train` are extracted from the arrays that are fed in. Calling `model.fit()` method trains our model on the training data we just prepared. Along with the training data, we pass it the number of epochs we need our model to train and the batch size of the data being fed. Epoch defines the number of times we go through training while batch size defines the number of samples processed before the model is updated. The size of a batch must be more than or equal to one and less than or equal to the number of samples in the training dataset.
 
 The image above shows what a model being trained might look like. Since we set the number of Epochs to 20, we can expect the model to go through our data 20 times.
 
@@ -285,10 +287,10 @@ async def check_condition():
 ```
 
 The code snippet above handles the trading logic for our bot. It takes into account the current price, predicted price of ETH/USD pair and also its position in our Alpaca account.
-The logic states that if we do not have a position and the current price of Ethereum is less than its predicted price one hour from now, then we buy 5 ETH/USD. Since we are testing this on a paper trading account, we can trade any arbitrary amount greater than the minimum amount required to trade on Alpaca. The minimum amount of Ethereum we can trade on Alpaca is 0.01 ETH. Information about other cryptocurrencies and their minimum tradable quantity on Alpaca can be found here.
+The logic states that if we do not have a position and the current price of Ethereum is less than its predicted price one hour from now, then we buy 5 ETH/USD. Since we are testing this on a paper trading account, we can trade any arbitrary amount greater than the minimum amount required to trade on Alpaca. The minimum amount of Ethereum we can trade on Alpaca is 0.01 ETH. Information about other cryptocurrencies and their minimum tradable quantity on Alpaca can be found [here](https://alpaca.markets/docs/broker/integration/crypto-trading-broker/).
 On the other hand, if we have an ETH/USD position and the predicted price of Ethereum is below its current price, we choose to sell.
 
-More checks and balances can be added to optimize trading performance in the snippet above. For example, one might consider calculating fees involved in executing trades, loss cutting or even adding a minimum profit threshold. Some of these optimizations have been introduced in the Scalping article.
+More checks and balances can be added to optimize trading performance in the snippet above. For example, one might consider calculating fees involved in executing trades, loss cutting or even adding a minimum profit threshold. Some of these optimizations have been introduced in the [Scalping](https://alpaca.markets/learn/automated-crypto-scalping-with-alpaca/) article.
 
 ```python
 async def post_alpaca_order(side):
@@ -324,7 +326,7 @@ async def post_alpaca_order(side):
        return False
 ```
 
-Now, let's go through how the order execution works for this bot. Based on the side of the trade, we create a market order request using Alpaca-py's `MarketOrderRequest()` method. Here, we can specify the symbol of the asset, quantity of the asset we would like to trade, the side of the trade and time till when the order should stay in place (time_in_force). More information on the method and its arguments can be found here.The market order request we just created can then be submitted as an order using our trading client's `submit_order()` method. Once the orders are placed, we return the response object from Alpaca.
+Now, let's go through how the order execution works for this bot. Based on the side of the trade, we create a market order request using Alpaca-py's `MarketOrderRequest()` method. Here, we can specify the symbol of the asset, quantity of the asset we would like to trade, the side of the trade and time till when the order should stay in place (time_in_force). More information on the method and its arguments can be found [here](https://alpaca.markets/docs/python-sdk/api_reference/trading/requests.html#marketorderrequest).The market order request we just created can then be submitted as an order using our trading client's `submit_order()` method. Once the orders are placed, we return the response object from Alpaca.
 
 ```python
 def get_positions():
@@ -351,7 +353,7 @@ Finally, we use the asyncio module to run our main function in a loop.
 
 Using neural networks to analyze market data and trading decisions can be a powerful and competitive tool for any trader. No model is absolutely perfect and should be at the very least tested in a paper environment before being deployed in a production environment with real money.
 The model and data preparation we discussed in this article can be optimized further for better results. You can consider adding more layers or even experimenting with the model parameters. Working with different versions of the model can give a better understanding of what works on the asset you are trying to trade too.
-If you are a M1 Mac user, you might need to set up Tensorflow this way.
+If you are a M1 Mac user, you might need to set up Tensorflow [this](https://developer.apple.com/metal/tensorflow-plugin/) way.
 
 ## Sources
 

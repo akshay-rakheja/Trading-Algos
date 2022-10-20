@@ -1,0 +1,9 @@
+dotenv: .env
+networks:
+  default: mainnet-fork
+  goerli:
+    weth_token: "0x2e3A2fb8473316A02b8A297B982498E661E1f6f5"
+  mainnet-fork:
+    weth_token: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+wallets:
+  from_key: ${PRIVATE_KEY}

@@ -1,10 +1,17 @@
+dependencies:
+  - aave/protocol-v2@1.0.1
+compiler:
+  solc:
+    remappings:
+      - "@aave=aave/protocol-v2@1.0.1"
 dotenv: .env
 networks:
   default: mainnet-fork
   goerli:
     weth_token: "0x2e3A2fb8473316A02b8A297B982498E661E1f6f5"
-    pool_addresses_provider: "0xc4dCB5126a3AfEd129BC3668Ea19285A9f56D15D"
+    lending_pool_addresses_provider: "0x5E52dEc931FFb32f609681B8438A51c675cc232d"
   mainnet-fork:
     weth_token: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    lending_pool_addresses_provider: "0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5"
 wallets:
   from_key: ${PRIVATE_KEY}

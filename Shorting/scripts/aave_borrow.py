@@ -19,7 +19,46 @@ def main():
     # Deposit ERC20 to Lending Pool
     deposit_erc20(AMOUNT_TO_DEPOSIT, lending_pool, erc20_address, account)
     # Get User Account Data
-    get_user_account_data(lending_pool, account)
+    buying_power, debt = get_user_account_data(lending_pool, account)
+    # USDT price in ETH
+    if network.show_active() in ["mainnet-fork"]:
+        price_feed_address = config["networks"][network.show_active(
+        )]["usdt_eth_price_feed"]
+    elif network.show_active() in ["goerli"]:
+        price_feed_address = config["networks"][network.show_active(
+        )]["eth_usdt_price_feed"]
+    print(
+        f"Price feed address: {price_feed_address} on network {network.show_active()}")
+    get_usdt_price(price_feed_address)
+
+    # Borrow ERC20 from Lending Pool
+    usdt_address = config["networks"][network.show_active()]["usdt_token"]
+    # borrow_erc20(amount, lending_pool, usdt_address, account)
+
+
+def get_usdt_price(price_feed_address):
+    if network.show_active() in ["mainnet-fork"]:
+        usdt_eth_price_feed = interface.IAggregatorV3(
+            price_feed_address)
+        latest_price = 1/(usdt_eth_price_feed.latestRoundData()[1]/10**18)
+    elif network.show_active() in ["goerli"]:
+        eth_usdt_price_feed = interface.IAggregatorV3(
+            price_feed_address)
+        latest_price = eth_usdt_price_feed.latestRoundData()[1]/10**18
+    print(f"Latest price: {latest_price}")
+    pass
+
+
+def borrow_erc20(amount, lending_pool, usdt_address, account):
+    print(
+        f"Borrowing {amount} of ERC20: {usdt_address} from {lending_pool.address}")
+    # lending_pool = interface.ILendingPool(lending_pool.address)
+    usdt = interface.IERC20(usdt_address)
+    borrow_txn = lending_pool.borrow(
+        usdt_address, amount, 2, 0, account.address, {"from": account})
+    borrow_txn.wait(1)
+    print("Borrowed ERC20")
+    return borrow_txn
 
 
 def get_user_account_data(lending_pool, account):
@@ -33,6 +72,7 @@ def get_user_account_data(lending_pool, account):
     print(f"{debt} ETH total debt")
     print(f"{borrowing_power} ETH borrowing power")
     print(f"{health_factor} health factor")
+    return (float(borrowing_power), float(debt))
 
 
 def approve_erc20(amount, lending_pool_address, erc20_address, account):

@@ -12,10 +12,13 @@ networks:
     lending_pool_addresses_provider: "0x5E52dEc931FFb32f609681B8438A51c675cc232d"
     usdt_token: "0xC2C527C0CACF457746Bd31B2a698Fe89de2b6d49"
     eth_usdt_price_feed: "0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e"
+    provider: "https://goerli.infura.io/v3/db6700c6f65c4ecab71f862179101899"
   mainnet-fork:
     weth_token: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
     lending_pool_addresses_provider: "0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5"
     usdt_token: "0xdAC17F958D2ee523a2206206994597C13D831ec7"
     usdt_eth_price_feed: "0xee9f2375b4bdf6387aa8265dd4fb8f16512a1d46"
+    alpaca_evm: "0xa37756Cb35A701399fb061fcf3f7D59c8E4A8268"
+    provider: "https://mainnet.infura.io/v3/b22377e458044f048f730177016697c9"
 wallets:
   from_key: ${PRIVATE_KEY}

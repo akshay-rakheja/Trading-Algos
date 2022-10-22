@@ -4,8 +4,7 @@ LOCAL_BLOCKCHAIN_ENVIRONMENTS = [
     "development",
     "ganache",
     "hardhat",
-    "local-ganache",
-    "mainnet-fork",
+    "local-ganache"
 ]
 
 

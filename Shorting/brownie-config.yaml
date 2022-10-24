@@ -8,9 +8,9 @@ dotenv: .env
 networks:
   default: mainnet-fork
   goerli:
-    weth_token: "0x2e3A2fb8473316A02b8A297B982498E661E1f6f5"
+    weth_token: "0xCCa7d1416518D095E729904aAeA087dBA749A4dC"
     lending_pool_addresses_provider: "0x5E52dEc931FFb32f609681B8438A51c675cc232d"
-    usdt_token: "0xC2C527C0CACF457746Bd31B2a698Fe89de2b6d49"
+    usdt_token: "0x65E2fe35C30eC218b46266F89847c63c2eDa7Dc7"
     eth_usdt_price_feed: "0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e"
     alpaca_evm: "0xa37756Cb35A701399fb061fcf3f7D59c8E4A8268"
     provider: "https://goerli.infura.io/v3/db6700c6f65c4ecab71f862179101899"

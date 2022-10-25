@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 # Alpaca Trading Client
-# trading_client = TradingClient(
-#     config('APCA_API_KEY_ID'), config('APCA_API_SECRET_KEY'), paper=True)
+trading_client = TradingClient(
+    config('APCA_API_KEY_ID'), config('APCA_API_SECRET_KEY'), paper=True)
 
 AMOUNT_TO_DEPOSIT = Web3.toWei(0.1, "ether")
 PERCENT_TO_BORROW = 0.2
@@ -59,7 +59,8 @@ def main():
         f"Price feed address: {price_feed_address} on network {network.show_active()}")
     latest_price = get_usdt_price(price_feed_address)
     # Calculate amount of USDT to borrow
-    amount_to_borrow = latest_price*buying_power*PERCENT_TO_BORROW*10**6
+    amount_to_borrow = int(round(
+        latest_price*buying_power*PERCENT_TO_BORROW*10**6, 0))
     print("Amount to borrow: ", amount_to_borrow)
     # Borrow USDT from Lending Pool
     borrow_usdt(amount_to_borrow, lending_pool, usdt_address, account)
@@ -118,11 +119,11 @@ def get_usdt_price(price_feed_address):
 
 def borrow_usdt(amount, lending_pool, usdt_address, account):
     print(
-        f"Borrowing {amount} of USDT: {usdt_address} from {lending_pool.address}")
+        f"Borrowing {amount/10**6} of USDT: {usdt_address} from {lending_pool.address}")
     # lending_pool = interface.ILendingPool(lending_pool.address)
     usdt = interface.IERC20(usdt_address)
     borrow_txn = lending_pool.borrow(
-        usdt_address, amount, 2, 0, account.address, {"from": account, "gas_price": Web3.toWei("1", "gwei"), "gas_limit": 1000000, "allow_revert": True})
+        usdt_address, amount, 2, 0, account.address, {"from": account, "gas_price": Web3.toWei("5", "gwei"), "gas_limit": 1000000, "allow_revert": True})
     borrow_txn.wait(1)
     print("Borrowed USDT")
     return borrow_txn
@@ -134,7 +135,7 @@ def get_user_account_data(lending_pool, account):
     collateral = Web3.fromWei(account_data[0], "ether")
     debt = Web3.fromWei(account_data[1], "ether")
     borrowing_power = Web3.fromWei(account_data[2], "ether")
-    health_factor = account_data[5]/10**18
+    health_factor = Web3.fromWei(account_data[5], "ether")
     print(f"{collateral} ETH total collateral")
     print(f"{debt} ETH total debt")
     print(f"{borrowing_power} ETH borrowing power")
@@ -147,7 +148,7 @@ def approve_erc20(amount, lending_pool_address, erc20_address, account):
         f"Approving {amount} of WETH: {erc20_address} to {lending_pool_address}")
     erc20 = interface.IERC20(erc20_address)
     approve_txn = erc20.approve(
-        lending_pool_address, amount, {"from": account, "gas_price": Web3.toWei("1", "gwei")})
+        lending_pool_address, amount, {"from": account, "gas_price": Web3.toWei("5", "gwei")})
     approve_txn.wait(1)
     print("Approved WETH")
     return approve_txn
@@ -162,7 +163,7 @@ def deposit_erc20(amount, lending_pool, erc20_address, account):
     print("account: ", account.address)
     print("lending_pool: ", lending_pool)
     deposit_txn = lending_pool.deposit(
-        erc20_address, amount, account.address, 0, {"from": account, 'gas_limit': 1000000, "allow_revert": True, "gas_price": Web3.toWei("1", "gwei")})
+        erc20_address, amount, account.address, 0, {"from": account, 'gas_limit': 1000000, "allow_revert": True, "gas_price": Web3.toWei("5", "gwei")})
     deposit_txn.wait(1)
     print("Deposited WETH")
     return deposit_txn

@@ -14,7 +14,7 @@ def get_weth():
     weth = interface.IWeth(
         config["networks"][network.show_active()]["weth_token"])
     txn = weth.deposit({"from": account, "value": Web3.toWei(
-        0.1, "ether"), "gas_price": Web3.toWei("1", "gwei")})
+        0.1, "ether"), "gas_price": Web3.toWei("5", "gwei")})
     txn.wait(1)
     print('Sent 0.1 ETH to WETH contract')
     return txn
@@ -25,7 +25,7 @@ def withdraw_eth():
     weth = interface.IWeth(
         config["networks"][network.show_active()]["weth_token"])
     txn = weth.withdraw(Web3.toWei(0.1, "ether"), {
-                        "from": account,  "gas_price": Web3.toWei("1", "gwei")})
+                        "from": account,  "gas_price": Web3.toWei("5", "gwei")})
     txn.wait(1)
     print('Withdrawn 0.1 ETH from WETH contract')
     return txn

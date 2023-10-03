@@ -7,7 +7,13 @@ import pandas as pd
 from datetime import date, datetime
 from ta.volatility import BollingerBands
 from ta.momentum import RSIIndicator
-from alpaca_trade_api.rest import REST, TimeFrame
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.data.requests import CryptoBarsRequest
+from alpaca.data.timeframe import TimeFrame
+from alpaca.data.historical.crypto import CryptoHistoricalDataClient
+# from alpaca_trade_api.rest import REST, TimeFrame
 import json
 import backtrader as bt
 import backtrader.feeds as btfeeds
@@ -25,8 +31,15 @@ HEADERS = {'APCA-API-KEY-ID': config.APCA_API_KEY_ID,
            'APCA-API-SECRET-KEY': config.APCA_API_SECRET_KEY}
 
 
+# # Alpaca client
+# client = REST(config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
+
 # Alpaca client
-client = REST(config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
+client = TradingClient(config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
+
+# Alpaca data client
+data_client = CryptoHistoricalDataClient(config.APCA_API_KEY_ID, config.APCA_API_SECRET_KEY)
+
 
 # Trading and Backtesting variables
 trading_pair = 'BTCUSD'
@@ -80,37 +93,34 @@ async def main():
 
 
 async def get_crypto_bar_data(trading_pair, start_date, end_date, exchange):
-    '''
-    Get bar data from Alpaca for a given trading pair and exchange
-    '''
     try:
+        # Convert dates to datetime objects
+        start_date = datetime.strptime(start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(end_date, "%Y-%m-%d")
 
-        bars = client.get_crypto_bars(
-            trading_pair, TimeFrame.Hour, start=start_date, end=end_date, limit=10000, exchanges=exchange).df
+        # Create a request object
+        request = CryptoBarsRequest(
+            symbol=trading_pair,
+            timeframe=TimeFrame.HOUR,
+            start=start_date,
+            end=end_date,
+            exchanges=[exchange],
+            limit=10000
+        )
 
-        bars = bars.drop(
-            columns=["trade_count", "exchange"], axis=1)
+        # Get the bar data
+        bars = await data_client.get_crypto_bars(request)
 
-        # Get RSI for the bar data
-        bars = get_rsi(bars)
-        # Get Bollinger Bands for the bar data
-        bars = get_bb(bars)
-        bars = bars.dropna()
-        bars['timestamp'] = bars.index
+        # Convert the response to a pandas DataFrame
+        bars_df = pd.DataFrame([vars(bar) for bar in bars])
+        bars_df.set_index('timestamp', inplace=True)
 
-        # Assigning bar data to global variables
-        global latest_bar_data
-        global bar_data
-        bar_data = bars
-        # The latest bar data is the last bar in the bar data
-        latest_bar_data = bars[-1:]
-    # If there is an error, log it
+        return bars_df
+
     except Exception as e:
         logger.exception(
             "There was an issue getting trade quote from Alpaca: {0}".format(e))
         return False
-
-    return bars
 
 
 async def check_condition():
@@ -163,15 +173,6 @@ async def check_condition():
     else:
         logger.info("Hold signal: Bollinger bands and RSI are within bounds")
 
-
-def get_daily_returns(df):
-    df['daily_returns'] = df['close'].pct_change()
-    return df
-
-
-def get_cumulative_return(df):
-    df['cumulative_return'] = df['daily_returns'].add(1).cumprod().sub(1)
-    return df
 
 
 def get_bb(df):
@@ -237,21 +238,47 @@ def get_account_details():
     return account.json()
 
 
+# # Post an Order to Alpaca
+# async def post_alpaca_order(symbol, qty, side, type, time_in_force):
+#     '''
+#     Post an order to Alpaca
+#     '''
+#     try:
+#         order = requests.post(
+#             '{0}/v2/orders'.format(ALPACA_BASE_URL), headers=HEADERS, json={
+#                 'symbol': symbol,
+#                 'qty': qty,
+#                 'side': side,
+#                 'type': type,
+#                 'time_in_force': time_in_force,
+#                 'client_order_id': 'bb_rsi_strategy'
+#             })
+#         logger.info('Alpaca order reply status code: {0}'.format(
+#             order.status_code))
+#         if order.status_code != 200:
+#             logger.info(
+#                 "Undesirable response from Alpaca! {}".format(order.json()))
+#             return False
+#     except Exception as e:
+#         logger.exception(
+#             "There was an issue posting order to Alpaca: {0}".format(e))
+#         return False
+#     return order.json()
+
 # Post an Order to Alpaca
 async def post_alpaca_order(symbol, qty, side, type, time_in_force):
     '''
     Post an order to Alpaca
     '''
     try:
-        order = requests.post(
-            '{0}/v2/orders'.format(ALPACA_BASE_URL), headers=HEADERS, json={
-                'symbol': symbol,
-                'qty': qty,
-                'side': side,
-                'type': type,
-                'time_in_force': time_in_force,
-                'client_order_id': 'bb_rsi_strategy'
-            })
+        request_params = MarketOrderRequest(
+            symbol=symbol,
+            qty=qty,
+            side=OrderSide.BUY if side == 'buy' else OrderSide.SELL,
+            time_in_force=TimeInForce.DAY if time_in_force == 'day' else TimeInForce.GTC,
+            client_order_id='bb_rsi_strategy'
+        )
+        order = client.submit_order(order_data=request_params)
         logger.info('Alpaca order reply status code: {0}'.format(
             order.status_code))
         if order.status_code != 200:
